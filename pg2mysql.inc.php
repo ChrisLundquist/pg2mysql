@@ -161,7 +161,7 @@ function pg2mysql(&$input, $header=true)
 
 		if(substr($line,0,2)==");" && $in_create_table) {
 			$in_create_table=false;
-			$line=") TYPE={$config['engine']};\n\n";
+			$line=") ENGINE={$config['engine']};\n\n";
 
 			$output.=$tbl_extra;
 			$output.=$line;
