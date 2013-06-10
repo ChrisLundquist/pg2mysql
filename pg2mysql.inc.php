@@ -230,7 +230,7 @@ function pg2mysql(&$input, $header=true)
 				$tbl_extra.=", PRIMARY KEY(`$field`)\n";
 			}
 
-			$specialfields=array("repeat","status","type","call");
+			$specialfields=array("repeat","status","type","call", "key");
 
 			$field=getfieldname($line);
 			if(in_array($field,$specialfields)) {
