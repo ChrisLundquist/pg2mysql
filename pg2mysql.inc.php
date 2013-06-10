@@ -65,7 +65,7 @@ function pg2mysql_large($infilename,$outfilename) {
 	$fs=filesize($infilename);
 	$infp=fopen($infilename,"rt");
 	$outfp=fopen($outfilename,"wt");
-	
+
 	//we read until we get a semicolon followed by a newline (;\n);
 	$pgsqlchunk=array();
 	$chunkcount=1;
@@ -109,7 +109,7 @@ function pg2mysql_large($infilename,$outfilename) {
 			print_r($pgsqlchunk);
 			echo "=======================\n";
 */
-			
+
 			$mysqlchunk=pg2mysql($pgsqlchunk,$first);
 			fputs($outfp,$mysqlchunk);
 
@@ -196,7 +196,7 @@ function pg2mysql(&$input, $header=true)
 
 			if( 	ereg("DEFAULT \('([0-9]*)'::int",$line,$regs) ||
 				ereg("DEFAULT \('([0-9]*)'::smallint",$line,$regs) ||
-				ereg("DEFAULT \('([0-9]*)'::bigint",$line,$regs) 
+				ereg("DEFAULT \('([0-9]*)'::bigint",$line,$regs)
 						) {
 				$num=$regs[1];
 				$line=ereg_replace(" DEFAULT \('([0-9]*)'[^ ,]*"," DEFAULT $num ",$line);
@@ -260,12 +260,12 @@ function pg2mysql(&$input, $header=true)
 			if(substr($line,-3,-1)==");") {
 				//we have a complete insert on one line
 				list($before,$after)=explode("VALUES",$line);
-				//we only replace the " with ` in what comes BEFORE the VALUES 
-				//(ie, field names, like INSERT INTO table ("bla","bla2") VALUES ('s:4:"test"','bladata2'); 
+				//we only replace the " with ` in what comes BEFORE the VALUES
+				//(ie, field names, like INSERT INTO table ("bla","bla2") VALUES ('s:4:"test"','bladata2');
 				//should convert to      INSERT INTO table (`bla`,`bla2`) VALUES ('s:4:"test"','bladata2');
-				
+
 				$before=str_replace("\"","`",$before);
-				
+
 				//in after, we need to watch out for escape format strings, ie (E'escaped \r in a string'), and ('bla',E'escaped \r in a string'),  but could also be (number, E'string'); so we cant search for the previoous '
 				//ugh i guess its possible these strings could exist IN the data as well, but the only way to solve that is to process these lines one character
 				//at a time, and thats just stupid, so lets just hope this doesnt appear anywhere in the actual data
@@ -281,8 +281,8 @@ function pg2mysql(&$input, $header=true)
 				//that ends with  ");"
 
 				list($before,$after)=explode("VALUES",$line);
-				//we only replace the " with ` in what comes BEFORE the VALUES 
-				//(ie, field names, like INSERT INTO table ("bla","bla2") VALUES ('s:4:"test"','bladata2'); 
+				//we only replace the " with ` in what comes BEFORE the VALUES
+				//(ie, field names, like INSERT INTO table ("bla","bla2") VALUES ('s:4:"test"','bladata2');
 				//should convert to      INSERT INTO table (`bla`,`bla2`) VALUES ('s:4:"test"','bladata2');
 
 				$before=str_replace("\"","`",$before);
@@ -307,7 +307,7 @@ function pg2mysql(&$input, $header=true)
 					//in after, we need to watch out for escape format strings, ie (E'escaped \r in a string'), and ('bla',E'escaped \r in a string')
 					//ugh i guess its possible these strings could exist IN the data as well, but the only way to solve that is to process these lines one character
 					//at a time, and thats just stupid, so lets just hope this doesnt appear anywhere in the actual data
-					
+
 					//after the first line, we only need to check for it in the middle, not at the beginning of an insert (becuase the beginning will be on the first line)
 					//$after=str_replace(" (E'","' ('",$after);
 					$line=$lines[$linenumber];
