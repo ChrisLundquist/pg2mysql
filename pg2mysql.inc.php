@@ -352,10 +352,10 @@ function pg2mysql(&$input, $header=true)
 		//while we're here, we might as well catch CREATE INDEX as well
 		if(substr($line,0,12)=="CREATE INDEX") {
 			preg_match('/CREATE INDEX "?([a-zA-Z0-9_]*)"? ON "?([a-zA-Z0-9_]*)"? USING btree \((.*)\);/',$line,$matches);
-			$indexname=$matches[1];
-			$tablename=$matches[2];
-			$columns=$matches[3];
-			if($tablename && $columns) {
+			if(isset($matches[1]) && isset($matches[2]) && isset($matches[3])) {
+				$indexname=$matches[1];
+				$tablename=$matches[2];
+				$columns=$matches[3];
 				$output.="ALTER TABLE `{$tablename}` ADD INDEX ( {$columns} ) ;\n";
 			}
 		}
