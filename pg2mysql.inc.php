@@ -27,7 +27,7 @@ define ('VERSION',"1.9");
 define ('COPYRIGHT',"Lightbox Technologies Inc. http://www.lightbox.ca");
 
 //this is the default, it can be overridden here, or specified as the third parameter on the command line
-$config['engine']="MyISAM";
+$config['engine']="InnoDB";
 
 function getfieldname($l)
 {
