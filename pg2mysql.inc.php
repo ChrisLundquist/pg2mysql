@@ -333,14 +333,16 @@ function pg2mysql(&$input, $header=true)
 			$pkey=$line;
 
 			$linenumber++;
-			$line=$lines[$linenumber];
+			if(isset($lines[$linenumber])) {
+				$line=$lines[$linenumber];
 
-			if(strstr($line," PRIMARY KEY ") && substr($line,-3,-1)==");") {
-				//looks like we have a single line PRIMARY KEY definition, lets go ahead and add it
-				$output.=$pkey;
-				//the postgres and mysql syntax for this is (at least, in the example im looking at)
-				//identical, so we can just add it as is.
-				$output.=$line;
+				if(strstr($line," PRIMARY KEY ") && substr($line,-3,-1)==");") {
+					//looks like we have a single line PRIMARY KEY definition, lets go ahead and add it
+					$output.=$pkey;
+					//the postgres and mysql syntax for this is (at least, in the example im looking at)
+					//identical, so we can just add it as is.
+					$output.=$line;
+				}
 			}
 
 		}
