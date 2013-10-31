@@ -29,6 +29,9 @@ define ('COPYRIGHT',"Lightbox Technologies Inc. http://www.lightbox.ca");
 //this is the default, it can be overridden here, or specified as the third parameter on the command line
 $config['engine']="InnoDB";
 
+// Timezone to use
+date_default_timezone_set('UTC');
+
 function getfieldname($l)
 {
 	//first check if its in nice quotes for us
