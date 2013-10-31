@@ -2,13 +2,15 @@
 
 ## Command-Line usage (recommended)
 
-1. `PGPASSWORD=yourpass pg_dump -h localhost --column-inserts --no-acl --no-owner --format p --data-only dbname -f pgfile.sql`
+1. `PGPASSWORD=yourpass pg_dump -h localhost --column-inserts --quote-all-identifiers \`
+    `--no-acl --no-owner --format p --data-only dbname -f pgfile.sql`
+    
     Additional documentation for `pg_dump` [here](http://www.postgresql.org/docs/9.3/static/app-pgdump.html)
     
 1. `php pg2mysql_cli.php pgfile.sql mysqlfile.sql [engine]`
     * `pgfile.sql` will not be modified
     * `mysqlfile.sql` will be overwritten if already exists
-    * engine is optional, defaults if not specified is InnoDB
+    * engine is optional, default if not specified is InnoDB
     
 1. `mysql dbname < mysqlfile.sql`
   
