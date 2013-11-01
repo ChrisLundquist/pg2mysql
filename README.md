@@ -2,8 +2,8 @@
 
 ## Command-Line usage (recommended)
 
-1. `PGPASSWORD=yourpass pg_dump -h localhost --column-inserts --quote-all-identifiers \`
-    `--clean --no-acl --no-owner --format p --data-only dbname -f pgfile.sql`
+1. `PGPASSWORD=yourpass pg_dump -h localhost --quote-all-identifiers \`
+    `--no-acl --no-owner --format p --data-only dbname -f pgfile.sql`
     
     Additional documentation for `pg_dump` [here](http://www.postgresql.org/docs/9.3/static/app-pgdump.html)
     
