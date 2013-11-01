@@ -185,6 +185,7 @@ function pg2mysql(&$input, $header=true)
 			$line=str_replace(" boolean"," bool",$line);
 			$line=str_replace(" bool DEFAULT true"," bool DEFAULT 1",$line);
 			$line=str_replace(" bool DEFAULT false"," bool DEFAULT 0",$line);
+			$line=str_replace("` `text`","` text",$line); // fix because pg_dump quotes text type for some reason
 			if(ereg(" character varying\(([0-9]*)\)",$line,$regs)) {
 				$num=$regs[1];
 				if($num<=255)
