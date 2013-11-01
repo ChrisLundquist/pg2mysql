@@ -388,9 +388,19 @@ function pg2mysql(&$input, $header=true)
 				$vals = explode('	', $line);
 				foreach($vals as $i => $val) {
 					$val = trim($val);
-					$vals[$i] = ($val == '\\N')
-						? 'NULL'
-						: "'" . str_replace("'", "\\'", trim($val)) . "'";
+					switch($val) {
+						case '\\N':
+							$vals[$i] = 'NULL';
+							break;
+						case 't':
+							$vals[$i] = 'true';
+							break;
+						case 'f':
+							$vals[$i] = 'false';
+							break;
+						default:
+							$vals[$i] = "'" . str_replace("'", "\\'", trim($val)) . "'";
+					}
 				}
 				$values[] = '(' . implode(',', $vals) . ')';
 				if(count($values) >= 1000) {
