@@ -387,6 +387,7 @@ function pg2mysql(&$input, $header=true)
 			} else {
 				$vals = explode('	', $line);
 				foreach($vals as $i => $val) {
+					$val = trim($val);
 					$vals[$i] = ($val == '\\N')
 						? 'NULL'
 						: "'" . str_replace("'", "\\'", trim($val)) . "'";
