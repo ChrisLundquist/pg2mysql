@@ -21,6 +21,7 @@ the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
 Boston, MA 02111-1307, USA.
 */
 
+ini_set("memory_limit","512M");
 error_reporting(E_ALL & ~E_DEPRECATED);
 define ('PRODUCT',"pg2mysql");
 define ('VERSION',"1.9");
