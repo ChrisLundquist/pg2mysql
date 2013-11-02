@@ -99,11 +99,13 @@ function pg2mysql_large($infilename,$outfilename) {
 			printf("Reading    progress: %3d%%   position: %7s   line: %9d   sql chunk: %9d  mem usage: %4dM\r",$percent,$position,$linenum,$chunkcount,$memusage);
 		}
 
-		if(strlen($instr)>3 && ( $instr[$len-3]==")" && $instr[$len-2]==";" && $instr[$len-1]=="\n") && $inquotes==false) {
+		$currentpos=ftell($infp);
+		$progress=$currentpos/$fs;
+
+		if($progress == 1.0 || (strlen($instr)>3 && ( $instr[$len-3]==")" && $instr[$len-2]==";" && $instr[$len-1]=="\n") && $inquotes==false)) {
 			$chunkcount++;
 			if($linenum%10000==0) {
-				$currentpos=ftell($infp);
-				$percent=round($currentpos/$fs*100);
+				$percent=round($progress*100);
 				$position=formatsize($currentpos);
 				printf("Processing progress: %3d%%   position: %7s   line: %9d   sql chunk: %9d  mem usage: %4dM\r",$percent,$position,$linenum,$chunkcount,$memusage);
 			}
