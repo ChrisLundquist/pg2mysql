@@ -28,6 +28,16 @@ define ('COPYRIGHT',"Lightbox Technologies Inc. http://www.lightbox.ca");
 
 //this is the default, it can be overridden here, or specified as the third parameter on the command line
 $config['engine']="MyISAM";
+$config['verbose'] = false;
+
+
+function write_debug($message) {
+	global $config;
+	if ($config['verbose']) {
+		fwrite(STDERR, "$message\n");
+	}
+}
+
 
 function getfieldname($l)
 {
@@ -62,8 +72,17 @@ function formatsize($s) {
 
 
 function pg2mysql_large($infilename,$outfilename) {
-	$fs=filesize($infilename);
+	$from_stdin = 0;
+	if ($infilename == '-') {
+		$infilename = 'php://STDIN';
+		$from_stdin = 1;
+	} else {
+		$fs=filesize($infilename);
+	}
 	$infp=fopen($infilename,"rt");
+	if ($outfilename == '-') {
+		$outfilename = 'php://STDOUT';
+	}
 	$outfp=fopen($outfilename,"wt");
 
 	//we read until we get a semicolon followed by a newline (;\n);
@@ -72,7 +91,9 @@ function pg2mysql_large($infilename,$outfilename) {
 	$linenum=0;
 	$inquotes=false;
 	$first=true;
-	echo "Filesize: ".formatsize($fs)."\n";
+	if (!$from_stdin) {
+		fprintf(STDERR, "Filesize: ".formatsize($fs)."\n");
+	}
 
 	while($instr=fgets($infp)) {
 		$linenum++;
@@ -88,20 +109,20 @@ function pg2mysql_large($infilename,$outfilename) {
 				$inquotes=true;
 		}
 
-		if( $linenum%10000 == 0) {
+		if( !$from_stdin && $linenum%10000 == 0) {
 			$currentpos=ftell($infp);
 			$percent=round($currentpos/$fs*100);
 			$position=formatsize($currentpos);
-			printf("Reading    progress: %3d%%   position: %7s   line: %9d   sql chunk: %9d  mem usage: %4dM\r",$percent,$position,$linenum,$chunkcount,$memusage);
+			fprintf(STDERR, "Reading    progress: %3d%%   position: %7s   line: %9d   sql chunk: %9d  mem usage: %4dM\r",$percent,$position,$linenum,$chunkcount,$memusage);
 		}
 
 		if(strlen($instr)>3 && ( $instr[$len-3]==")" && $instr[$len-2]==";" && $instr[$len-1]=="\n") && $inquotes==false) {
 			$chunkcount++;
-			if($linenum%10000==0) {
+			if(!$from_stdin && $linenum%10000==0) {
 				$currentpos=ftell($infp);
 				$percent=round($currentpos/$fs*100);
 				$position=formatsize($currentpos);
-				printf("Processing progress: %3d%%   position: %7s   line: %9d   sql chunk: %9d  mem usage: %4dM\r",$percent,$position,$linenum,$chunkcount,$memusage);
+				fprintf(STDERR, "Processing progress: %3d%%   position: %7s   line: %9d   sql chunk: %9d  mem usage: %4dM\r",$percent,$position,$linenum,$chunkcount,$memusage);
 			}
 /*
 			echo "sending chunk:\n";
@@ -118,8 +139,8 @@ function pg2mysql_large($infilename,$outfilename) {
 			$mysqlchunk="";
 		}
 	}
-	echo "\n\n";
-	printf("Completed! %9d lines   %9d sql chunks\n\n",$linenum,$chunkcount);
+	fwrite(STDERR, "\n\n");
+	fprintf(STDERR, "Completed! %9d lines   %9d sql chunks\n\n",$linenum,$chunkcount);
 
 	fclose($infp);
 	fclose($outfp);

@@ -1,3 +1,4 @@
+#!/usr/bin/php
 <?php
 /*
 This file is part of the 'Pg2MySQL' converter project
@@ -24,25 +25,117 @@ Boston, MA 02111-1307, USA.
 
 include "pg2mysql.inc.php";
 
-if(! ($argv[1] && $argv[2]) ) {
-	echo "Usage: php pg2mysql_cli.php <inputfilename> <outputfilename> [engine]\n";
-	exit;
-}
-else {
-	if(isset($argv[3])) $config['engine']=$argv[3];
-	pg2mysql_large($argv[1],$argv[2]);
-
-
-echo <<<XHTML
-Notes:
+function print_notes()
+{
+	global $config;
+	
+	fwrite( STDERR, <<<XHTML
+NOTES:
  - No its not perfect
  - Yes it discards ALL stored procedures
- - Yes it discards ALL queries except for CREATE TABLE and INSERT INTO 
+ - Yes it discards ALL queries except for CREATE TABLE and INSERT INTO
+ - No it does not convert PostgreSQL domains
  - Yes you can email us suggestsions: info[AT]lightbox.org
     - In emails, please include the Postgres code, and the expected MySQL code
- - If you're having problems creating your postgres dump, make sure you use "--format p --inserts"
- - Default output engine if not specified is MyISAM
+ - If you're having problems creating your postgres dump, make sure you use
+   "--format p --inserts"
+ - Default output engine if not specified is {$config['engine']}
 
-XHTML;
+XHTML
+	);
 
 }
+
+
+function print_help()
+{
+	global $config;
+	
+	$constants = get_defined_constants();
+
+	fwrite( STDERR, <<<USAGE
+SYNOPSIS
+  php pg2mysql_cli.php [OPTIONS] [<input> [<output>]]
+
+DESCRIPTION
+  <input>
+      name of the input file or a dash (-) for STDIN.  Defaults to STDIN
+
+  <output>
+      name of the output file or a dash (-) for STDOUT.  Defaults to STDOUT
+
+  --engine <engine>
+      name of the MySQL database engine to be used by converted
+      tables.  Defaults to {$config['engine']}
+
+  --verbose
+      print extra processing information to STDERR.
+
+  --help
+      print this help information
+
+VERSION
+  {$constants['VERSION']}
+
+COPYRIGHT
+  {$constants['COPYRIGHT']}
+
+
+USAGE
+	);
+	print_notes();
+}
+
+// remove the program name
+array_shift($argv);
+
+$input_file = NULL;
+$output_file = NULL;
+$engine = NULL;
+
+while (count($argv)) {
+	$arg = array_shift($argv);
+	if (preg_match('/^--/', $arg)) {
+		if ($arg == '--help') {
+			print_help();
+			exit;
+
+		} elseif ($arg == '--verbose') {
+			$config['verbose'] = true;
+
+		} elseif ($arg == '--engine') {
+			$config['engine'] = array_shift($argv);
+
+		} else {
+			fwrite(STDERR, "ERROR: option '$arg' is not recognized.\n\n");
+			print_help();
+			exit(1);
+		}				
+		
+	} elseif (!$input_file) {
+		$input_file = $arg;
+		
+	} elseif (!$output_file) {
+		$output_file = $arg;
+
+	} elseif (!$engine) {
+		$config['engine'] = $arg;
+		$engine = 1;
+	}
+}
+
+// default to STDIN
+if (!$input_file) {
+	$input_file = '-';
+}
+write_debug("Input File: $input_file");
+
+// default to STDOUT
+if (!$output_file) {
+	$output_file = '-';
+}
+write_debug("Output File: $output_file");
+
+pg2mysql_large($input_file, $output_file);
+
+print_notes();
