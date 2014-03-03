@@ -68,6 +68,9 @@ DESCRIPTION
       name of the MySQL database engine to be used by converted
       tables.  Defaults to {$config['engine']}
 
+  --domains <filename>
+      name of the file that contains domain definitions for the conversion
+
   --verbose
       print extra processing information to STDERR.
 
@@ -89,6 +92,7 @@ USAGE
 // remove the program name
 array_shift($argv);
 
+$domain_file = NULL;
 $input_file = NULL;
 $output_file = NULL;
 $engine = NULL;
@@ -96,7 +100,10 @@ $engine = NULL;
 while (count($argv)) {
 	$arg = array_shift($argv);
 	if (preg_match('/^--/', $arg)) {
-		if ($arg == '--help') {
+		if ($arg == '--domains') {
+			$domain_file = array_shift($argv);
+
+		} elseif ($arg == '--help') {
 			print_help();
 			exit;
 
@@ -136,6 +143,16 @@ if (!$output_file) {
 }
 write_debug("Output File: $output_file");
 
+if ($domain_file) {
+	write_debug("Domain definitions file: $domain_file");
+	read_domains(file($domain_file));
+	foreach ($config['domains'] as $name => $def) {
+		write_debug("    $name --> $def");
+	}
+	write_debug("");
+}
+
 pg2mysql_large($input_file, $output_file);
 
 print_notes();
+

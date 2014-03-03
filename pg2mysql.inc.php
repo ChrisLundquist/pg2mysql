@@ -28,6 +28,8 @@ define ('COPYRIGHT',"Lightbox Technologies Inc. http://www.lightbox.ca");
 
 //this is the default, it can be overridden here, or specified as the third parameter on the command line
 $config['engine']="MyISAM";
+$config['domains'] = array();
+$config['domainschema'] = null;
 $config['verbose'] = false;
 
 
@@ -172,6 +174,12 @@ function pg2mysql(&$input, $header=true)
 	$tbl_extra="";
 	while(isset($lines[$linenumber])) {
 		$line=$lines[$linenumber];
+		
+		if (!$config['domainschema'] && preg_match('/SET\s+search_path\s*=\s*([^,\s]+)/', $line, $matches)) {
+			$config['domainschema'] = $matches[1];
+			write_debug("Schema: " . $config['domainschema']);
+		}
+
 		if(substr($line,0,12)=="CREATE TABLE") {
 			$in_create_table=true;
 			$line=str_replace("\"","`",$line);
@@ -193,6 +201,17 @@ function pg2mysql(&$input, $header=true)
 		}
 
 		if($in_create_table) {
+			/*
+				Replace domains with their PostgreSQL definitions
+			*/
+			foreach ($config['domains'] AS $dom => $def) {
+				if ($config['domainschema']) {
+					$line = preg_replace('/\b' . $config['domainschema'] . '.' . $dom . '\b/', $def, $line);
+				}
+				
+				$line = preg_replace('/\b' . $dom . '\b/', $def, $line);
+			}
+
 			$line=str_replace("\"","`",$line);
 			$line=str_replace(" integer"," int(11)",$line);
 			$line=str_replace(" int_unsigned"," int(11) UNSIGNED",$line);
@@ -384,6 +403,19 @@ function pg2mysql(&$input, $header=true)
 			preg_match('/CREATE DATABASE ([a-zA-Z0-9_]*) .* ENCODING = \'(.*)\'/', $line, $matches);
 			$output .= "CREATE DATABASE `$matches[1]` DEFAULT CHARACTER SET $matches[2];\n\n";
 		}
+		
+		if (preg_match('/^\s*CREATE DOMAIN/', $line)) {
+			$def = $line;
+			while (!preg_match('/;\s*$/', $line) && isset($lines[$linenumber+1])) {
+				$linenumber++;
+				$line = $lines[$linenumber];
+				$def .= $line;
+			}
+			
+			if (preg_match('/CREATE DOMAIN\s+([a-zA-Z0-9_\.]+)\s+AS\s+(.+?)(\s*;|\s+CONSTRAINT)/', $def, $matches)) {
+				$config['domains'][$matches[1]] = $matches[2];
+			}
+		}
 
 		if(substr($line, 0, 8) == '\\connect') {
 			preg_match('/connect ([a-zA-Z0-9_]*)/', $line, $matches);
@@ -417,4 +449,37 @@ function pg2mysql(&$input, $header=true)
 		$linenumber++;
 	}
 	return $output;
+}
+
+
+
+function read_domains(&$input)
+{
+	global $config;
+
+	if(is_array(&$input)) {
+		$lines=$input;
+	} else {
+		$lines=split("\n",$input);
+	}
+
+	while(count($lines)) {
+		$line = array_shift($lines);
+		
+		if (preg_match('/SET\s+search_path\s*=\s*([^,\s]+)/', $line, $matches)) {
+			$config['domainschema'] = $matches[1];
+			write_debug("Schema: " . $config['domainschema']);
+		}
+		
+		if (preg_match('/^\s*CREATE DOMAIN/', $line)) {
+			$def = $line;
+			while (!preg_match('/;\s*$/', $def) && count($lines)) {
+				$def .= array_shift($lines);
+			}
+			
+			if (preg_match('/CREATE DOMAIN\s+([a-zA-Z0-9_\.]+)\s+AS\s+(.+?)(\s*;|\s+CONSTRAINT)/', $def, $matches)) {
+				$config['domains'][$matches[1]] = $matches[2];
+			}
+		}
+	}
 }
