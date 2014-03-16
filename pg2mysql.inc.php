@@ -264,74 +264,55 @@ function pg2mysql(&$input, $header=true)
 		}
 
 		if(substr($line,0,11)=="INSERT INTO") {
-			if(substr($line,-3,-1)==");") {
-				//we have a complete insert on one line
-				list($before,$after)=explode("VALUES",$line);
-				//we only replace the " with ` in what comes BEFORE the VALUES
-				//(ie, field names, like INSERT INTO table ("bla","bla2") VALUES ('s:4:"test"','bladata2');
-				//should convert to      INSERT INTO table (`bla`,`bla2`) VALUES ('s:4:"test"','bladata2');
+			//this insert spans multiple lines, so keep dumping the lines until we reach a line
+			//that ends with  ");"
 
-				$before=str_replace("\"","`",$before);
+			list($before,$after)=explode("VALUES",$line,2);
+			//we only replace the " with ` in what comes BEFORE the VALUES
+			//(ie, field names, like INSERT INTO table ("bla","bla2") VALUES ('s:4:"test"','bladata2');
+			//should convert to      INSERT INTO table (`bla`,`bla2`) VALUES ('s:4:"test"','bladata2');
 
-				//in after, we need to watch out for escape format strings, ie (E'escaped \r in a string'), and ('bla',E'escaped \r in a string'),  but could also be (number, E'string'); so we cant search for the previoous '
-				//ugh i guess its possible these strings could exist IN the data as well, but the only way to solve that is to process these lines one character
-				//at a time, and thats just stupid, so lets just hope this doesnt appear anywhere in the actual data
-				$after=str_replace(" (E'"," ('",$after);
-				$after=str_replace(", E'",", '",$after);
+			$before=str_replace("\"","`",$before);
 
-				$output.=$before."VALUES".$after;
-				$linenumber++;
-				continue;
+			//in after, we need to watch out for escape format strings, ie (E'escaped \r in a string'), and ('bla',E'escaped \r in a string')
+			//ugh i guess its possible these strings could exist IN the data as well, but the only way to solve that is to process these lines one character
+			//at a time, and thats just stupid, so lets just hope this doesnt appear anywhere in the actual data
+			//also there is a situation where string ends with \ (backslash). For example, 'C:\' and it's valid for pg, but not for mysql.
+			//the regexp looks odd, the preblem is that in PHP regexps we have to use 4 (four!) backslashes to represend one real!
+			//here is the regexp without escaping: (([^\]|^)(\\)*\)'
+			$after=preg_replace(array("/(, | \()E'/", "/(([^\\\\]|^)(\\\\\\\\)*\\\\)'/"),array('\1\'', '\1\\\''),$after);
+
+			$c=substr_count($line,"'");
+			//we have an odd number of ' marks
+			if($c%2!=0) {
+				$inquotes=true;
 			}
-			else {
-				//this insert spans multiple lines, so keep dumping the lines until we reach a line
-				//that ends with  ");"
+			else $inquotes=false;
 
-				list($before,$after)=explode("VALUES",$line);
-				//we only replace the " with ` in what comes BEFORE the VALUES
-				//(ie, field names, like INSERT INTO table ("bla","bla2") VALUES ('s:4:"test"','bladata2');
-				//should convert to      INSERT INTO table (`bla`,`bla2`) VALUES ('s:4:"test"','bladata2');
-
-				$before=str_replace("\"","`",$before);
+			$output.=$before."VALUES".$after;
+			while(substr($lines[$linenumber],-3,-1)!=");" || $inquotes) {
+				$linenumber++;
+				$line=$lines[$linenumber];
 
 				//in after, we need to watch out for escape format strings, ie (E'escaped \r in a string'), and ('bla',E'escaped \r in a string')
 				//ugh i guess its possible these strings could exist IN the data as well, but the only way to solve that is to process these lines one character
 				//at a time, and thats just stupid, so lets just hope this doesnt appear anywhere in the actual data
-				$after=str_replace(" (E'"," ('",$after);
-				$after=str_replace(", E'",", '",$after);
+				//also there is a situation where string ends with \ (backslash). For example, 'C:\' and it's valid for pg, but not for mysql.
+				//the regexp looks odd, the preblem is that in PHP regexps we have to use 4 (four!) backslashes to represend one real!
+				//here is the regexp without escaping: (([^\]|^)(\\)*\)'
+				$line=preg_replace(array("/, E'/", "/(([^\\\\]|^)(\\\\\\\\)*\\\\)'/"),array(", '", '\1\\\''),$line);
+				$output.=$line;
+
+//					printf("inquotes: %d linenumber: %4d line: %s\n",$inquotes,$linenumber,$lines[$linenumber]);
 
 				$c=substr_count($line,"'");
 				//we have an odd number of ' marks
 				if($c%2!=0) {
-					$inquotes=true;
-				}
-				else $inquotes=false;
-
-				$output.=$before."VALUES".$after;
-				do{
-					$linenumber++;
-
-					//in after, we need to watch out for escape format strings, ie (E'escaped \r in a string'), and ('bla',E'escaped \r in a string')
-					//ugh i guess its possible these strings could exist IN the data as well, but the only way to solve that is to process these lines one character
-					//at a time, and thats just stupid, so lets just hope this doesnt appear anywhere in the actual data
-
-					//after the first line, we only need to check for it in the middle, not at the beginning of an insert (becuase the beginning will be on the first line)
-					//$after=str_replace(" (E'","' ('",$after);
-					$line=$lines[$linenumber];
-					$line=str_replace("', E'","', '",$line);
-					$output.=$line;
-
-//					printf("inquotes: %d linenumber: %4d line: %s\n",$inquotes,$linenumber,$lines[$linenumber]);
-
-					$c=substr_count($line,"'");
-					//we have an odd number of ' marks
-					if($c%2!=0) {
-						if($inquotes) $inquotes=false;
-						else $inquotes=true;
+					if($inquotes) $inquotes=false;
+					else $inquotes=true;
 //						echo "inquotes=$inquotes\n";
-					}
+				}
 
-				} while(substr($lines[$linenumber],-3,-1)!=");" || $inquotes);
 			}
 		}
 		if(substr($line,0,16)=="ALTER TABLE ONLY") {
