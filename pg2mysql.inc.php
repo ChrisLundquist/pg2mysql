@@ -359,7 +359,7 @@ function pg2mysql(&$input, $header=true)
 			if(isset($matches[1]) && isset($matches[2]) && isset($matches[3])) {
 				$indexname=$matches[1];
 				$tablename=$matches[2];
-				$columns=$matches[3];
+				$columns=str_replace("\"","`",$matches[3]);
 				$output.="ALTER TABLE `{$tablename}` ADD INDEX ( {$columns} ) ;\n";
 			}
 		}
