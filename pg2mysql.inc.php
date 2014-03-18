@@ -231,6 +231,7 @@ function pg2mysql(&$input, $header=true)
 			$line=str_replace(" time without time zone"," time",$line);
 
 			$line=str_replace(" timestamp DEFAULT now()"," timestamp DEFAULT CURRENT_TIMESTAMP",$line);
+            $line=preg_replace("/ timestamp( NOT NULL)?(,|$)/",' timestamp DEFAULT 0${1}${2}',$line);
 
 			if(strstr($line,"auto_increment")) {
 				$field=getfieldname($line);
