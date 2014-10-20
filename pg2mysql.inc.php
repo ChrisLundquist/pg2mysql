@@ -413,7 +413,7 @@ function pg2mysql(&$input, $header=true)
 			}
 			
 			if (preg_match('/CREATE DOMAIN\s+([a-zA-Z0-9_\.]+)\s+AS\s+(.+?)(\s*;|\s+CONSTRAINT)/', $def, $matches)) {
-				$config['domains'][$matches[1]] = $matches[2];
+				$config['domains'][$matches[1]] = str_replace('NOT NULL', '', $matches[2]);
 			}
 		}
 
@@ -478,7 +478,8 @@ function read_domains(&$input)
 			}
 			
 			if (preg_match('/CREATE DOMAIN\s+([a-zA-Z0-9_\.]+)\s+AS\s+(.+?)(\s*;|\s+CONSTRAINT)/', $def, $matches)) {
-				$config['domains'][$matches[1]] = $matches[2];
+				// take NOT NULL out of domain def since it also appears on the column definition
+				$config['domains'][$matches[1]] = str_replace('NOT NULL', '', $matches[2]);
 			}
 		}
 	}
