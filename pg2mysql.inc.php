@@ -153,7 +153,7 @@ function pg2mysql(&$input, $header=true)
 {
 	global $config;
 
-	if(is_array(&$input)) {
+	if(is_array($input)) {
 		$lines=$input;
 	} else {
 		$lines=split("\n",$input);
@@ -453,11 +453,11 @@ function pg2mysql(&$input, $header=true)
 
 
 
-function read_domains(&$input)
+function read_domains($input)
 {
 	global $config;
 
-	if(is_array(&$input)) {
+	if(is_array($input)) {
 		$lines=$input;
 	} else {
 		$lines=split("\n",$input);
