@@ -126,11 +126,11 @@ function pg2mysql_large($infilename,$outfilename) {
 
 }
 
-function pg2mysql(&$input, $header=true)
+function pg2mysql($input, $header=true)
 {
 	global $config;
 
-	if(is_array(&$input)) {
+	if(is_array($input)) {
 		$lines=$input;
 	} else {
 		$lines=split("\n",$input);
