@@ -37,11 +37,11 @@ echo <<<XHTML
 Notes:
  - No its not perfect
  - Yes it discards ALL stored procedures
- - Yes it discards ALL queries except for CREATE TABLE and INSERT INTO 
+ - Yes it discards ALL queries except for CREATE TABLE and INSERT INTO
  - Yes you can email us suggestsions: info[AT]lightbox.org
     - In emails, please include the Postgres code, and the expected MySQL code
  - If you're having problems creating your postgres dump, make sure you use "--format p --inserts"
- - Default output engine if not specified is MyISAM
+ - Default output engine if not specified is InnoDB
 
 XHTML;
 

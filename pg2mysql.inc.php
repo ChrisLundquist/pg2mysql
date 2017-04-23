@@ -21,13 +21,17 @@ the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
 Boston, MA 02111-1307, USA.
 */
 
+ini_set("memory_limit","512M");
 error_reporting(E_ALL & ~E_DEPRECATED);
 define ('PRODUCT',"pg2mysql");
 define ('VERSION',"1.9");
 define ('COPYRIGHT',"Lightbox Technologies Inc. http://www.lightbox.ca");
 
 //this is the default, it can be overridden here, or specified as the third parameter on the command line
-$config['engine']="MyISAM";
+$config['engine']="InnoDB";
+
+// Timezone to use
+date_default_timezone_set('UTC');
 
 function getfieldname($l)
 {
@@ -95,11 +99,13 @@ function pg2mysql_large($infilename,$outfilename) {
 			printf("Reading    progress: %3d%%   position: %7s   line: %9d   sql chunk: %9d  mem usage: %4dM\r",$percent,$position,$linenum,$chunkcount,$memusage);
 		}
 
-		if(strlen($instr)>3 && ( $instr[$len-3]==")" && $instr[$len-2]==";" && $instr[$len-1]=="\n") && $inquotes==false) {
+		$currentpos=ftell($infp);
+		$progress=$currentpos/$fs;
+
+		if($progress == 1.0 || (strlen($instr)>3 && ( $instr[$len-3]==")" && $instr[$len-2]==";" && $instr[$len-1]=="\n") && $inquotes==false)) {
 			$chunkcount++;
 			if($linenum%10000==0) {
-				$currentpos=ftell($infp);
-				$percent=round($currentpos/$fs*100);
+				$percent=round($progress*100);
 				$position=formatsize($currentpos);
 				printf("Processing progress: %3d%%   position: %7s   line: %9d   sql chunk: %9d  mem usage: %4dM\r",$percent,$position,$linenum,$chunkcount,$memusage);
 			}
@@ -182,6 +188,7 @@ function pg2mysql($input, $header=true)
 			$line=str_replace(" boolean"," bool",$line);
 			$line=str_replace(" bool DEFAULT true"," bool DEFAULT 1",$line);
 			$line=str_replace(" bool DEFAULT false"," bool DEFAULT 0",$line);
+			$line=str_replace("` `text`","` text",$line); // fix because pg_dump quotes text type for some reason
 			if(ereg(" character varying\(([0-9]*)\)",$line,$regs)) {
 				$num=$regs[1];
 				if($num<=255)
@@ -224,13 +231,14 @@ function pg2mysql($input, $header=true)
 			$line=str_replace(" time without time zone"," time",$line);
 
 			$line=str_replace(" timestamp DEFAULT now()"," timestamp DEFAULT CURRENT_TIMESTAMP",$line);
+			$line=preg_replace("/ timestamp( NOT NULL)?(,|$)/",' timestamp DEFAULT 0${1}${2}',$line);
 
 			if(strstr($line,"auto_increment")) {
 				$field=getfieldname($line);
 				$tbl_extra.=", PRIMARY KEY(`$field`)\n";
 			}
 
-			$specialfields=array("repeat","status","type","call", "key");
+			$specialfields=array("repeat","status","type","call", "key", "regexp");
 
 			$field=getfieldname($line);
 			if(in_array($field,$specialfields)) {
@@ -257,74 +265,55 @@ function pg2mysql($input, $header=true)
 		}
 
 		if(substr($line,0,11)=="INSERT INTO") {
-			if(substr($line,-3,-1)==");") {
-				//we have a complete insert on one line
-				list($before,$after)=explode("VALUES",$line);
-				//we only replace the " with ` in what comes BEFORE the VALUES
-				//(ie, field names, like INSERT INTO table ("bla","bla2") VALUES ('s:4:"test"','bladata2');
-				//should convert to      INSERT INTO table (`bla`,`bla2`) VALUES ('s:4:"test"','bladata2');
+			//this insert spans multiple lines, so keep dumping the lines until we reach a line
+			//that ends with  ");"
 
-				$before=str_replace("\"","`",$before);
+			list($before,$after)=explode("VALUES",$line,2);
+			//we only replace the " with ` in what comes BEFORE the VALUES
+			//(ie, field names, like INSERT INTO table ("bla","bla2") VALUES ('s:4:"test"','bladata2');
+			//should convert to      INSERT INTO table (`bla`,`bla2`) VALUES ('s:4:"test"','bladata2');
 
-				//in after, we need to watch out for escape format strings, ie (E'escaped \r in a string'), and ('bla',E'escaped \r in a string'),  but could also be (number, E'string'); so we cant search for the previoous '
-				//ugh i guess its possible these strings could exist IN the data as well, but the only way to solve that is to process these lines one character
-				//at a time, and thats just stupid, so lets just hope this doesnt appear anywhere in the actual data
-				$after=str_replace(" (E'"," ('",$after);
-				$after=str_replace(", E'",", '",$after);
+			$before=str_replace("\"","`",$before);
 
-				$output.=$before."VALUES".$after;
-				$linenumber++;
-				continue;
+			//in after, we need to watch out for escape format strings, ie (E'escaped \r in a string'), and ('bla',E'escaped \r in a string')
+			//ugh i guess its possible these strings could exist IN the data as well, but the only way to solve that is to process these lines one character
+			//at a time, and thats just stupid, so lets just hope this doesnt appear anywhere in the actual data
+			//also there is a situation where string ends with \ (backslash). For example, 'C:\' and it's valid for pg, but not for mysql.
+			//the regexp looks odd, the preblem is that in PHP regexps we have to use 4 (four!) backslashes to represend one real!
+			//here is the regexp without escaping: (([^\]|^)(\\)*\)'
+			$after=preg_replace(array("/(, | \()E'/", "/(([^\\\\]|^)(\\\\\\\\)*\\\\)'/"),array('\1\'', '\1\\\''),$after);
+
+			$c=substr_count($line,"'");
+			//we have an odd number of ' marks
+			if($c%2!=0) {
+				$inquotes=true;
 			}
-			else {
-				//this insert spans multiple lines, so keep dumping the lines until we reach a line
-				//that ends with  ");"
+			else $inquotes=false;
 
-				list($before,$after)=explode("VALUES",$line);
-				//we only replace the " with ` in what comes BEFORE the VALUES
-				//(ie, field names, like INSERT INTO table ("bla","bla2") VALUES ('s:4:"test"','bladata2');
-				//should convert to      INSERT INTO table (`bla`,`bla2`) VALUES ('s:4:"test"','bladata2');
-
-				$before=str_replace("\"","`",$before);
+			$output.=$before."VALUES".$after;
+			while(substr($lines[$linenumber],-3,-1)!=");" || $inquotes) {
+				$linenumber++;
+				$line=$lines[$linenumber];
 
 				//in after, we need to watch out for escape format strings, ie (E'escaped \r in a string'), and ('bla',E'escaped \r in a string')
 				//ugh i guess its possible these strings could exist IN the data as well, but the only way to solve that is to process these lines one character
 				//at a time, and thats just stupid, so lets just hope this doesnt appear anywhere in the actual data
-				$after=str_replace(" (E'"," ('",$after);
-				$after=str_replace(", E'",", '",$after);
+				//also there is a situation where string ends with \ (backslash). For example, 'C:\' and it's valid for pg, but not for mysql.
+				//the regexp looks odd, the preblem is that in PHP regexps we have to use 4 (four!) backslashes to represend one real!
+				//here is the regexp without escaping: (([^\]|^)(\\)*\)'
+				$line=preg_replace(array("/, E'/", "/(([^\\\\]|^)(\\\\\\\\)*\\\\)'/"),array(", '", '\1\\\''),$line);
+				$output.=$line;
+
+//					printf("inquotes: %d linenumber: %4d line: %s\n",$inquotes,$linenumber,$lines[$linenumber]);
 
 				$c=substr_count($line,"'");
 				//we have an odd number of ' marks
 				if($c%2!=0) {
-					$inquotes=true;
-				}
-				else $inquotes=false;
-
-				$output.=$before."VALUES".$after;
-				do{
-					$linenumber++;
-
-					//in after, we need to watch out for escape format strings, ie (E'escaped \r in a string'), and ('bla',E'escaped \r in a string')
-					//ugh i guess its possible these strings could exist IN the data as well, but the only way to solve that is to process these lines one character
-					//at a time, and thats just stupid, so lets just hope this doesnt appear anywhere in the actual data
-
-					//after the first line, we only need to check for it in the middle, not at the beginning of an insert (becuase the beginning will be on the first line)
-					//$after=str_replace(" (E'","' ('",$after);
-					$line=$lines[$linenumber];
-					$line=str_replace("', E'","', '",$line);
-					$output.=$line;
-
-//					printf("inquotes: %d linenumber: %4d line: %s\n",$inquotes,$linenumber,$lines[$linenumber]);
-
-					$c=substr_count($line,"'");
-					//we have an odd number of ' marks
-					if($c%2!=0) {
-						if($inquotes) $inquotes=false;
-						else $inquotes=true;
+					if($inquotes) $inquotes=false;
+					else $inquotes=true;
 //						echo "inquotes=$inquotes\n";
-					}
+				}
 
-				} while(substr($lines[$linenumber],-3,-1)!=");" || $inquotes);
 			}
 		}
 		if(substr($line,0,16)=="ALTER TABLE ONLY") {
@@ -333,14 +322,15 @@ function pg2mysql($input, $header=true)
 			$pkey=$line;
 
 			$linenumber++;
-			$line=$lines[$linenumber];
+			if(isset($lines[$linenumber])) {
+				$line=$lines[$linenumber];
 
-			if(strstr($line," PRIMARY KEY ") && substr($line,-3,-1)==");") {
-				//looks like we have a single line PRIMARY KEY definition, lets go ahead and add it
-				$output.=$pkey;
-				//the postgres and mysql syntax for this is (at least, in the example im looking at)
-				//identical, so we can just add it as is.
-				$output.=$line;
+				if(strstr($line," PRIMARY KEY ") && substr($line,-3,-1)==");") {
+					//looks like we have a single line PRIMARY KEY definition, lets go ahead and add it
+					$output.=$pkey;
+					//MySQL and Postgres syntax are similar here, minus quoting differences
+					$output.=str_replace("\"","`",$line);
+				}
 			}
 
 		}
@@ -348,10 +338,10 @@ function pg2mysql($input, $header=true)
 		//while we're here, we might as well catch CREATE INDEX as well
 		if(substr($line,0,12)=="CREATE INDEX") {
 			preg_match('/CREATE INDEX "?([a-zA-Z0-9_]*)"? ON "?([a-zA-Z0-9_]*)"? USING btree \((.*)\);/',$line,$matches);
-			$indexname=$matches[1];
-			$tablename=$matches[2];
-			$columns=$matches[3];
-			if($tablename && $columns) {
+			if(isset($matches[1]) && isset($matches[2]) && isset($matches[3])) {
+				$indexname=$matches[1];
+				$tablename=$matches[2];
+				$columns=str_replace("\"","`",$matches[3]);
 				$output.="ALTER TABLE `{$tablename}` ADD INDEX ( {$columns} ) ;\n";
 			}
 		}
@@ -381,9 +371,20 @@ function pg2mysql($input, $header=true)
 			} else {
 				$vals = explode('	', $line);
 				foreach($vals as $i => $val) {
-					$vals[$i] = ($val == '\\N')
-						? 'NULL'
-						: "'" . str_replace("'", "\\'", trim($val)) . "'";
+					$val = trim($val);
+					switch($val) {
+						case '\\N':
+							$vals[$i] = 'NULL';
+							break;
+						case 't':
+							$vals[$i] = 'true';
+							break;
+						case 'f':
+							$vals[$i] = 'false';
+							break;
+						default:
+							$vals[$i] = "'" . str_replace("'", "\\'", trim($val)) . "'";
+					}
 				}
 				$values[] = '(' . implode(',', $vals) . ')';
 				if(count($values) >= 1000) {
