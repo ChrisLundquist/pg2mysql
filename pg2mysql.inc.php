@@ -226,6 +226,9 @@ function pg2mysql($input, $header=true)
 			$line=str_replace(" timestamp with time zone"," timestamp",$line);
 			$line=str_replace(" timestamp without time zone"," timestamp",$line);
 
+			// Strip unsupported timezone information in date fields
+			$line=preg_replace("/ date DEFAULT '(.*)\+.*'/",' date DEFAULT \'${1}\'',$line);
+
 			//time
 			$line=str_replace(" time with time zone"," time",$line);
 			$line=str_replace(" time without time zone"," time",$line);
