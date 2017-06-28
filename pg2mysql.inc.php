@@ -233,6 +233,9 @@ function pg2mysql($input, $header=true)
 			$line=str_replace(" timestamp DEFAULT now()"," timestamp DEFAULT CURRENT_TIMESTAMP",$line);
 			$line=preg_replace("/ timestamp( NOT NULL)?(,|$)/",' timestamp DEFAULT 0${1}${2}',$line);
 
+			// Remove defaults pointing to functions
+			$line=preg_replace("/ DEFAULT .*\(\)/", "", $line);
+
 			if(strstr($line,"auto_increment")) {
 				$field=getfieldname($line);
 				$tbl_extra.=", PRIMARY KEY(`$field`)\n";
