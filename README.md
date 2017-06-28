@@ -14,6 +14,23 @@
     
 1. `mysql dbname < mysqlfile.sql`
   
+  
+## Additional behaviors
+
+### Auto-increment key type
+
+The key type created for autoincrement fields is configureable via the `PG2MYSQL_AUTOINCREMENT_KEY_TYPE` environment variable.
+
+The default is `PRIMARY KEY`. A simple `KEY` can be used to circumvent the fact that MySQL does not support multiple primary keys.
+
+This option is particularly useful for converting dumps that have primary keys on the auto_increment field already defined as `ALTER TABLE` statements.
+
+Usage example:
+```
+export PG2MYSQL_AUTOINCREMENT_KEY_TYPE=KEY
+php pg2mysql_cli.php <options ...>
+```
+
 ## Web usage
 
 To use, simply unzip into your website somewhere, and point your browser at `pg2mysql.php`
