@@ -29,6 +29,7 @@ define ('COPYRIGHT',"Lightbox Technologies Inc. http://www.lightbox.ca");
 
 //this is the default, it can be overridden here, or specified as the third parameter on the command line
 $config['engine']="InnoDB";
+$config['autoincrement_key_type'] = getenv("PG2MYSQL_AUTOINCREMENT_KEY_TYPE") ? getenv("PG2MYSQL_AUTOINCREMENT_KEY_TYPE") : "PRIMARY KEY";
 
 // Timezone to use
 date_default_timezone_set('UTC');
@@ -238,7 +239,7 @@ function pg2mysql($input, $header=true)
 
 			if(strstr($line,"auto_increment")) {
 				$field=getfieldname($line);
-				$tbl_extra.=", PRIMARY KEY(`$field`)\n";
+				$tbl_extra.=", " . $config['autoincrement_key_type'] . "(`$field`)\n";
 			}
 
 			$specialfields=array("repeat","status","type","call", "key", "regexp");
