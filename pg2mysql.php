@@ -4,7 +4,7 @@ This file is part of the 'Pg2MySQL' converter project
 http://www.lightbox.org/pg2mysql.php
 
 Copyright (C) 2005-2011 James Grant <james@lightbox.org>
-			Lightbox Technologies Inc.
+            Lightbox Technologies Inc.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public
@@ -32,21 +32,18 @@ The <b>pg2mysql</b> converter is an online tool to convert/migrate existing Post
 <br><br>
 <form method=post action="pg2mysql.php">
 
-<?
- if($_POST['postgresdata'])
- {
- 	$output=pg2mysql(stripslashes($_POST['postgresdata']));
- 	echo "<h3>Here is your MySQL dump file</h3>";
-	echo "<textarea rows=20 cols=80 name=mysqldata>$output</textarea>";
- }
- else
- {
- ?>
+<?php
+ if ($_POST['postgresdata']) {
+     $output=pg2mysql(stripslashes($_POST['postgresdata']));
+     echo "<h3>Here is your MySQL dump file</h3>";
+     echo "<textarea rows=20 cols=80 name=mysqldata>$output</textarea>";
+ } else {
+     ?>
  	<h3>Paste PostgreSQL dump file here</h3>
 	<textarea rows=20 cols=80 name=postgresdata></textarea>
 	<br />
 	<input type=submit value="Convert to MySQL">
- <?
+ <?php
  }
  ?>
 

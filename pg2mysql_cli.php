@@ -4,7 +4,7 @@ This file is part of the 'Pg2MySQL' converter project
 http://www.lightbox.org/pg2mysql.php
 
 Copyright (C) 2005-2011 James Grant <james@lightbox.org>
-			Lightbox Technologies Inc.
+            Lightbox Technologies Inc.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public
@@ -24,16 +24,17 @@ Boston, MA 02111-1307, USA.
 
 include "pg2mysql.inc.php";
 
-if(! ($argv[1] && $argv[2]) ) {
-	echo "Usage: php pg2mysql_cli.php <inputfilename> <outputfilename> [engine]\n";
-	exit;
-}
-else {
-	if(isset($argv[3])) $config['engine']=$argv[3];
-	pg2mysql_large($argv[1],$argv[2]);
+if (! ($argv[1] && $argv[2])) {
+    echo "Usage: php pg2mysql_cli.php <inputfilename> <outputfilename> [engine]\n";
+    exit;
+} else {
+    if (isset($argv[3])) {
+        $config['engine']=$argv[3];
+    }
+    pg2mysql_large($argv[1], $argv[2]);
 
 
-echo <<<XHTML
+    echo <<<XHTML
 Notes:
  - No its not perfect
  - Yes it discards ALL stored procedures
@@ -44,5 +45,4 @@ Notes:
  - Default output engine if not specified is InnoDB
 
 XHTML;
-
 }
