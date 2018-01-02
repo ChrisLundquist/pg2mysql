@@ -29,8 +29,6 @@ define('COPYRIGHT', "Lightbox Technologies Inc. http://www.lightbox.ca");
 
 //this is the default, it can be overridden here, or specified as the third parameter on the command line
 $config['engine'] = "MyISAM";
-$config['engine']="InnoDB";      
-$config['engine'] = "MyISAM";
 $config['autoincrement_key_type'] = getenv("PG2MYSQL_AUTOINCREMENT_KEY_TYPE") ? getenv("PG2MYSQL_AUTOINCREMENT_KEY_TYPE") : "PRIMARY KEY";        
      
 // Timezone to use        
