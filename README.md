@@ -40,7 +40,7 @@ If you want to use your own interface, simply include the pg2mysql.inc.php into 
 eg:
  
 ```php
-$mysql=pg2mysql($postgres);
+$mysql = pg2mysql($postgres);
 ```
 
 ## Original Author
