@@ -21,6 +21,7 @@ the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
 Boston, MA 02111-1307, USA.
 */
 
+ini_set("memory_limit", "512M");
 error_reporting(E_ALL & ~E_DEPRECATED);
 define('PRODUCT', "pg2mysql");
 define('VERSION', "1.9");
@@ -28,6 +29,12 @@ define('COPYRIGHT', "Lightbox Technologies Inc. http://www.lightbox.ca");
 
 //this is the default, it can be overridden here, or specified as the third parameter on the command line
 $config['engine'] = "MyISAM";
+$config['engine']="InnoDB";      
+$config['engine'] = "MyISAM";
+$config['autoincrement_key_type'] = getenv("PG2MYSQL_AUTOINCREMENT_KEY_TYPE") ? getenv("PG2MYSQL_AUTOINCREMENT_KEY_TYPE") : "PRIMARY KEY";        
+     
+// Timezone to use        
+date_default_timezone_set('UTC');
 
 function getfieldname($l)
 {
@@ -157,7 +164,7 @@ function pg2mysql($input, $header = true)
     } else
         $output = "";
 
-    $in_create_table = $in_insert = FALSE;
+    $in_create_table = $in_insert = false;
 
     $linenumber = 0;
     $tbl_extra = "";
@@ -237,12 +244,12 @@ function pg2mysql($input, $header = true)
 
             $line = str_replace(" timestamp DEFAULT now()", " timestamp DEFAULT CURRENT_TIMESTAMP", $line);
 
-            if (strstr($line, "auto_increment")) {
+            if (strstr($line, "auto_increment")) {                 
                 $field = getfieldname($line);
-                $tbl_extra .= ", PRIMARY KEY(`$field`)\n";
+                $tbl_extra .= ", " . $config['autoincrement_key_type'] . "(`$field`)\n";
             }
 
-            $specialfields = array("repeat", "status", "type", "call");
+            $specialfields = array("repeat","status","type","call", "key", "regexp");
 
             $field = getfieldname($line);
             if (in_array($field, $specialfields)) {
@@ -259,7 +266,7 @@ function pg2mysql($input, $header = true)
                 $line = "";
                 //and if the previous output ended with a , remove the ,
                 $lastchr = substr($output, -2, 1);
-                //  echo "lastchr=$lastchr";
+
                 if ($lastchr == ",") {
                     $output = substr($output, 0, -2) . "\n";
                 }
@@ -312,7 +319,6 @@ function pg2mysql($input, $header = true)
 
                 $output .= $before . "VALUES" . $after;
                 do {
-                    // $linenumber++;
 
                     //in after, we need to watch out for escape format strings, ie (E'escaped \r in a string'), and ('bla',E'escaped \r in a string')
                     //ugh i guess its possible these strings could exist IN the data as well, but the only way to solve that is to process these lines one character
@@ -324,14 +330,11 @@ function pg2mysql($input, $header = true)
                     $line = str_replace("', E'", "', '", $line);
                     $output .= $line;
 
-//                  printf("inquotes: %d linenumber: %4d line: %s\n",$inquotes,$linenumber,$lines[$linenumber]);
-
                     $c = substr_count($line, "'");
                     //we have an odd number of ' marks
                     if ($c % 2 != 0) {
                         if ($inquotes) $inquotes = false;
                         else $inquotes = true;
-//                      echo "inquotes=$inquotes\n";
                     }
 
                 } while (substr($lines[$linenumber], -3, -1) != ");" || $inquotes);
@@ -342,7 +345,6 @@ function pg2mysql($input, $header = true)
             $line = str_replace("\"", "`", $line);
             $pkey = $line;
 
-//            $linenumber++;
             $line = $lines[$linenumber];
 
             if (strstr($line, " PRIMARY KEY ") && substr($line, -3, -1) == ");") {
@@ -384,10 +386,10 @@ function pg2mysql($input, $header = true)
             preg_match('/COPY (.*) FROM stdin/', $line, $matches);
             $heads = str_replace('"', "`", $matches[1]);
             $values = array();
-            $in_insert = TRUE;
+            $in_insert = true;
         } elseif ($in_insert) {
             if ($line == "\\.\n") {
-                $in_insert = FALSE;
+                $in_insert = false;
                 if ($values) $output .= "INSERT INTO $heads VALUES\n" . implode(",\n", $values) . ";\n\n";
             } else {
                 $vals = explode('   ', $line);
