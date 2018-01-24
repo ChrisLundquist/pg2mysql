@@ -110,7 +110,14 @@ while (count($argv)) {
 		} elseif ($arg == '--verbose') {
 			$config['verbose'] = true;
 
-		} elseif ($arg == '--engine') {
+        } elseif ($arg == '--no-header') {
+            $config['no-header'] = true;
+
+        } elseif ($arg == '--sqlite') {
+            $config['sqlite'] = true;
+            $config['no-header'] = true;
+
+        } elseif ($arg == '--engine') {
 			$config['engine'] = array_shift($argv);
 
 		} else {
