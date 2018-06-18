@@ -37,7 +37,7 @@ date_default_timezone_set('UTC');
 function getfieldname($l)
 {
     //first check if its in nice quotes for us
-    if (preg_match("`(.*)`", $l, $regs)) {
+    if (preg_match("/`(.*)`/", $l, $regs)) {
         if ($regs[1]) {
             return $regs[1];
         } else {
@@ -45,7 +45,7 @@ function getfieldname($l)
         }
     }
     //if its not in quotes, then it should (we hope!) be the first "word" on the line, up to the first space.
-    elseif (preg_match("([^\ ]*)", trim($l), $regs)) {
+    elseif (preg_match("/([^\ ]*)/", trim($l), $regs)) {
         if ($regs[1]) {
             return $regs[1];
         } else {
@@ -193,39 +193,40 @@ function pg2mysql($input, $header=true)
             $line=str_replace(" bool DEFAULT true", " bool DEFAULT 1", $line);
             $line=str_replace(" bool DEFAULT false", " bool DEFAULT 0", $line);
             $line=str_replace("` `text`", "` text", $line); // fix because pg_dump quotes text type for some reason
-            if (preg_match(" character varying\(([0-9]*)\)", $line, $regs)) {
+            if (preg_match("/ character varying\(([0-9]*)\)/", $line, $regs)) {
                 $num=$regs[1];
                 if ($num<=255) {
-                    $line=preg_replace(" character varying\([0-9]*\)", " varchar($num)", $line);
+                    # Pattern delimniter "/" fails here. Use alternatively "|".
+                    $line=preg_replace("| character varying\([0-9]*\)|", " varchar($num)", $line);
                 } else {
-                    $line=preg_replace(" character varying\([0-9]*\)", " text", $line);
+                    $line=preg_replace("/ character varying\([0-9]*\)/", " text", $line);
                 }
             }
             //character varying with no size, we will default to varchar(255)
-            if (preg_match(" character varying", $line)) {
-                $line=preg_replace(" character varying", " varchar(255)", $line);
+            if (preg_match("/ character varying/", $line)) {
+                $line=preg_replace("/ character varying/", " varchar(255)", $line);
             }
 
-            if (preg_match("DEFAULT \('([0-9]*)'::int", $line, $regs) ||
-                preg_match("DEFAULT \('([0-9]*)'::smallint", $line, $regs) ||
-                preg_match("DEFAULT \('([0-9]*)'::bigint", $line, $regs)
+            if (preg_match("/DEFAULT \('([0-9]*)'::int/", $line, $regs) ||
+                preg_match("/DEFAULT \('([0-9]*)'::smallint/", $line, $regs) ||
+                preg_match("/DEFAULT \('([0-9]*)'::bigint/", $line, $regs)
                         ) {
                 $num=$regs[1];
-                $line=preg_replace(" DEFAULT \('([0-9]*)'[^ ,]*", " DEFAULT $num ", $line);
+                $line=preg_replace("/ DEFAULT \('([0-9]*)'[^ ,]*/", " DEFAULT $num ", $line);
             }
-            if (preg_match("DEFAULT \(([0-9\-]*)\)", $line, $regs)) {
+            if (preg_match("/DEFAULT \(([0-9\-]*)\)/", $line, $regs)) {
                 $num=$regs[1];
-                $line=preg_replace(" DEFAULT \(([0-9\-]*)\)", " DEFAULT $num ", $line);
+                $line=preg_replace("/ DEFAULT \(([0-9\-]*)\)/", " DEFAULT $num ", $line);
             }
-            $line=preg_replace(" DEFAULT nextval\(.*\) ", " auto_increment ", $line);
-            $line=preg_replace("::.*,", ",", $line);
-            $line=preg_replace("::.*$", "\n", $line);
-            if (preg_match("character\(([0-9]*)\)", $line, $regs)) {
+            $line=preg_replace("/ DEFAULT nextval\(.*\) /", " auto_increment ", $line);
+            $line=preg_replace("/::.*,/", ",", $line);
+            $line=preg_replace("/::.*$/", "\n", $line);
+            if (preg_match("/character\(([0-9]*)\)/", $line, $regs)) {
                 $num=$regs[1];
                 if ($num<=255) {
-                    $line=preg_replace(" character\([0-9]*\)", " varchar($num)", $line);
+                    $line=preg_replace("/ character\([0-9]*\)/", " varchar($num)", $line);
                 } else {
-                    $line=preg_replace(" character\([0-9]*\)", " text", $line);
+                    $line=preg_replace("/ character\([0-9]*\)/", " text", $line);
                 }
             }
             //timestamps
