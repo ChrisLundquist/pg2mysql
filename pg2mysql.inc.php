@@ -376,15 +376,24 @@ function pg2mysql($input, $header=true)
         }
 
         if (substr($line, 0, 5) == 'COPY ') {
-            preg_match('/COPY (.*) FROM stdin/', $line, $matches);
-            $heads = str_replace('"', "`", $matches[1]);
+            # Wrap all table and column names in "`" to prevent clashes with reserved names in mysql.
+            preg_match('/COPY\s+(\S+)\s*\((.*)\)\s+FROM\s+stdin/', $line, $matches);
+            $table = preg_replace('/^["`]*(\S+)["`]*$/', "`$1`", $matches[1]);
+            $columns = '';
+            foreach (explode(',', $matches[2]) as $columnName) {
+                $columnName = preg_replace('/^\s*["`]*([^"`\s]+)["`]*\s*$/', "`$1`", $columnName);
+                if ($columns) {
+                    $columns .= ', ';
+                }
+                $columns .= $columnName;
+            }
             $values = array();
             $in_insert = true;
         } elseif ($in_insert) {
             if ($line == "\\.\n") {
                 $in_insert = false;
                 if ($values) {
-                    $output .= "INSERT INTO $heads VALUES\n" . implode(",\n", $values) . ";\n\n";
+                    $output .= "INSERT INTO $table ($columns) VALUES\n" . implode(",\n", $values) . ";\n\n";
                 }
             } else {
                 $vals = explode('	', $line);
@@ -406,7 +415,7 @@ function pg2mysql($input, $header=true)
                 }
                 $values[] = '(' . implode(',', $vals) . ')';
                 if (count($values) >= 1000) {
-                    $output .= "INSERT INTO $heads VALUES\n" . implode(",\n", $values) . ";\n";
+                    $output .= "INSERT INTO $table ($columns) VALUES\n" . implode(",\n", $values) . ";\n";
                     $values = array();
                 }
             }
