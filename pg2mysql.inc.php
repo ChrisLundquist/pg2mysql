@@ -30,6 +30,7 @@ define('COPYRIGHT', "Lightbox Technologies Inc. http://www.lightbox.ca");
 //this is the default, it can be overridden here, or specified as the third parameter on the command line
 $config['engine']="InnoDB";
 $config['autoincrement_key_type'] = getenv("PG2MYSQL_AUTOINCREMENT_KEY_TYPE") ? getenv("PG2MYSQL_AUTOINCREMENT_KEY_TYPE") : "PRIMARY KEY";
+$config['ignore_index'] = getenv("PG2MYSQL_IGNORE_INDEX");
 
 $tables = array();
 $tables_extra = array();
@@ -373,7 +374,7 @@ function pg2mysql($input, $header=true)
         }
 
         //while we're here, we might as well catch CREATE INDEX as well
-        if (substr($line, 0, 12)=="CREATE INDEX") {
+        if (substr($line, 0, 12)=="CREATE INDEX" && !$config['ignore_index']) {
             preg_match('/CREATE INDEX "?([a-zA-Z0-9_]*)"? ON "?([a-zA-Z0-9_]*)"? USING btree \((.*)\);/', $line, $matches);
             if (isset($matches[1]) && isset($matches[2]) && isset($matches[3])) {
                 $indexname=$matches[1];

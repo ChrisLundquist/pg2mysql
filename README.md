@@ -31,6 +31,16 @@ export PG2MYSQL_AUTOINCREMENT_KEY_TYPE=KEY
 php pg2mysql_cli.php <options ...>
 ```
 
+### Ignoring INDEX
+
+Tables indexes are converted except if the environment variable PG2MYSQL_IGNORE_INDEX is set to a truthy value.
+
+Usage example:
+```
+export PG2MYSQL_IGNORE_INDEX=1
+php pg2mysql_cli.php <options ...>
+``` 
+
 ## Web usage
 
 To use, simply unzip into your website somewhere, and point your browser at `pg2mysql.php`
