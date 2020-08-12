@@ -220,7 +220,7 @@ function pg2mysql($input, $header=true)
             $line=str_replace("` `text`", "` text", $line); // fix because pg_dump quotes text type for some reason
             if (preg_match("/ character varying\(([0-9]*)\)/", $line, $regs)) {
                 $num=$regs[1];
-                if ($num<=255) {
+                if ($num<=65000) {
                     # Pattern delimniter "/" fails here. Use alternatively "|".
                     $line=preg_replace("| character varying\([0-9]*\)|", " varchar($num)", $line);
                 } else {
@@ -248,7 +248,7 @@ function pg2mysql($input, $header=true)
             $line=preg_replace("/::.*$/", "\n", $line);
             if (preg_match("/character\(([0-9]*)\)/", $line, $regs)) {
                 $num=$regs[1];
-                if ($num<=255) {
+                if ($num<=65000) {
                     $line=preg_replace("/ character\([0-9]*\)/", " varchar($num)", $line);
                 } else {
                     $line=preg_replace("/ character\([0-9]*\)/", " text", $line);
