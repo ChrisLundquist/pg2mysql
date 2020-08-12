@@ -31,6 +31,9 @@ define('COPYRIGHT', "Lightbox Technologies Inc. http://www.lightbox.ca");
 $config['engine']="InnoDB";
 $config['autoincrement_key_type'] = getenv("PG2MYSQL_AUTOINCREMENT_KEY_TYPE") ? getenv("PG2MYSQL_AUTOINCREMENT_KEY_TYPE") : "PRIMARY KEY";
 
+$tables = array();
+$tables_extra = array();
+
 // Timezone to use
 date_default_timezone_set('UTC');
 
@@ -139,6 +142,7 @@ function pg2mysql_large($infilename, $outfilename)
 function pg2mysql($input, $header=true)
 {
     global $config;
+    global $tables_col, $tables_extra;
 
     if (is_array($input)) {
         $lines=$input;
@@ -156,28 +160,49 @@ function pg2mysql($input, $header=true)
     }
 
     $in_create_table = $in_insert = false;
-
+    $create_table_name="";
     $linenumber=0;
-    $tbl_extra="";
+    $table_col = $table_extra="";
     while (isset($lines[$linenumber])) {
         $line=$lines[$linenumber];
         if (substr($line, 0, 12)=="CREATE TABLE") {
-            $in_create_table=true;
             $line=str_replace("\"", "`", $line);
-            $output.=$line;
+            preg_match("/CREATE TABLE `?([^\ ]*)`?/", $line, $regs);
+            $create_table_name = $regs[1];
+            $in_create_table=true;
+	    $tables_col[$create_table_name] = '';
             $linenumber++;
             continue;
         }
 
+        if ($in_create_table && trim($line)==")") {
+            preg_match('/INHERITS \("?([^\ ]*)"?\);/', $lines[$linenumber+1], $regs);
+            $inherits_from=$regs[1];
+	    if ($inherits_from) {
+                $parts = explode("\n", $output, 2);
+	        $table_col = "-- inherited from $inherits_from {\n" .
+		    $tables_col[$inherits_from] . ($table_col ? ',' : '') .
+		    "-- }\n" .
+		    $table_col;
+		$table_extra = "-- inherited from $inherits_from {\n" .
+		    $tables_extra[$inherits_from] . ($table_extra ? ',' : '') .
+		    "-- }\n" .
+		    $table_extra;
+                $linenumber++;
+		$line=");\n";
+            }
+        }
         if (substr($line, 0, 2)==");" && $in_create_table) {
             $in_create_table=false;
             $line=") ENGINE={$config['engine']};\n\n";
 
-            $output.=$tbl_extra;
-            $output.=$line;
+	    $output.= "CREATE TABLE `$create_table_name` (\n" . $table_col . $table_extra . $line;
+
+            $tables_col[$create_table_name] = $table_col;
+            $tables_extra[$create_table_name] = $table_extra;
 
             $linenumber++;
-            $tbl_extra="";
+            $table_col = $table_extra="";
             continue;
         }
 
@@ -249,7 +274,7 @@ function pg2mysql($input, $header=true)
 	    $field=getfieldname($line);
             
             if (strstr($line, "auto_increment")) {
-                $tbl_extra.=", " . $config['autoincrement_key_type'] . "(`$field`)\n";
+                $table_extra.=", " . $config['autoincrement_key_type'] . "(`$field`)\n";
             }
 
 	    if ($field && $field!=')') {
@@ -264,14 +289,14 @@ function pg2mysql($input, $header=true)
             //just skip a CONSTRAINT line
             if ($field == 'CONSTRAINT') {
                 $line="";
-                //and if the previous output ended with a , remove the ,
-                $lastchr=substr($output, -2, 1);
+                //and if the previous $table_col ended with a , remove the ,
+                $lastchr=substr($table_col, -2, 1);
                 if ($lastchr==",") {
-                    $output=substr($output, 0, -2)."\n";
+                    $table_col=substr($table_col, 0, -2)."\n";
                 }
             }
 
-            $output.=$line;
+            $table_col.=$line;
         }
 
         if (substr($line, 0, 11)=="INSERT INTO") {
@@ -352,9 +377,9 @@ function pg2mysql($input, $header=true)
             preg_match('/CREATE INDEX "?([a-zA-Z0-9_]*)"? ON "?([a-zA-Z0-9_]*)"? USING btree \((.*)\);/', $line, $matches);
             if (isset($matches[1]) && isset($matches[2]) && isset($matches[3])) {
                 $indexname=$matches[1];
-                $tablename=$matches[2];
+                $create_table_name=$matches[2];
                 $columns=str_replace("\"", "`", $matches[3]);
-                $output.="ALTER TABLE `{$tablename}` ADD INDEX ( {$columns} ) ;\n";
+                $output.="ALTER TABLE `{$create_table_name}` ADD INDEX ( {$columns} ) ;\n";
             }
         }
 
