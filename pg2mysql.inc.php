@@ -246,16 +246,14 @@ function pg2mysql($input, $header=true)
             // Remove defaults pointing to functions
             $line=preg_replace("/ DEFAULT .*\(\)/", "", $line);
 
+	    $field=getfieldname($line);
+            
             if (strstr($line, "auto_increment")) {
-                $field=getfieldname($line);
                 $tbl_extra.=", " . $config['autoincrement_key_type'] . "(`$field`)\n";
             }
 
-            $specialfields=array("repeat","status","type","call", "key", "regexp");
-
-            $field=getfieldname($line);
-            if (in_array($field, $specialfields)) {
-                $line=str_replace("$field ", "`$field` ", $line);
+	    if ($field && $field!=')') {
+              $line=preg_replace("/(^\s*)`?(${field})`?/", '${1}`${2}`', $line);
             }
 
             //text/blob fields are not allowed to have a default, so if we find a text DEFAULT, change it to varchar(255) DEFAULT
@@ -264,11 +262,10 @@ function pg2mysql($input, $header=true)
             }
 
             //just skip a CONSTRAINT line
-            if (strstr($line, " CONSTRAINT ")) {
+            if ($field == 'CONSTRAINT') {
                 $line="";
                 //and if the previous output ended with a , remove the ,
                 $lastchr=substr($output, -2, 1);
-                //	echo "lastchr=$lastchr";
                 if ($lastchr==",") {
                     $output=substr($output, 0, -2)."\n";
                 }
