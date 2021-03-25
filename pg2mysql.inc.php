@@ -82,6 +82,8 @@ function pg2mysql_large($infilename, $outfilename)
     $linenum=0;
     $inquotes=false;
     $first=true;
+    $batchcount=0;
+    $BATCH_CAPACITY=10000;
     echo "Filesize: ".formatsize($fs)."\n";
 
     while ($instr=fgets($infp)) {
@@ -100,16 +102,20 @@ function pg2mysql_large($infilename, $outfilename)
         }
 
         if ($linenum%10000 == 0) {
-            $currentpos=ftell($infp);
+            $currentpos=ftell($infp)+$linenum;
             $percent=round($currentpos/$fs*100);
             $position=formatsize($currentpos);
             printf("Reading    progress: %3d%%   position: %7s   line: %9d   sql chunk: %9d  mem usage: %4dM\r", $percent, $position, $linenum, $chunkcount, $memusage);
         }
 
-        $currentpos=ftell($infp);
+        $currentpos=ftell($infp)+$linenum;// windows OS \n\r line-end character ftell isn't equals filesize.
         $progress=$currentpos/$fs;
+        if(startsWith($instr, "INSERT INTO") || startsWith($instr, "CREATE TABLE")){
+            $batchcount++;
+        }
+        // print_r("currentpos:$currentpos".",fs:$fs,"."progress:".$progress);
 
-        if ($progress == 1.0 || (strlen($instr)>3 && ($instr[$len-3]==")" && $instr[$len-2]==";" && $instr[$len-1]=="\n") && $inquotes==false)) {
+        if ($progress == 1.0 || (strlen($instr)>3 && ($instr[$len-3]==")" && $instr[$len-2]==";" && $instr[$len-1]=="\n") && $inquotes==false && $batchcount>0 && $batchcount%$BATCH_CAPACITY==0)) {
             $chunkcount++;
             if ($linenum%10000==0) {
                 $percent=round($progress*100);
@@ -129,6 +135,7 @@ function pg2mysql_large($infilename, $outfilename)
             $first=false;
             $pgsqlchunk=array();
             $mysqlchunk="";
+            $batchcount=0;
         }
     }
     echo "\n\n";
@@ -173,7 +180,8 @@ function pg2mysql($input, $header=true)
         $output="";
     }
 
-    $in_create_table = $in_insert = $exclude_content = false;
+    $in_create_table = $in_insert = $exclude_content = $in_same_insert_table_prefix = false;
+    $pre_insert_prefix="";
 
     $linenumber=0;
     $tbl_extra="";
@@ -391,11 +399,37 @@ function pg2mysql($input, $header=true)
                     $after=$v1.' UNHEX(\''.$clob_c.'\') '.$v3;
                 }
             }
-
-            $output.=$before."VALUES".$after;
-            while (substr($lines[$linenumber], -3, -1)!=");" || $inquotes) {
+            $next_line = isset($lines[$linenumber+1])?$lines[$linenumber+1]:"";
+            $next_before="";
+            if (substr($next_line, 0, 11)=="INSERT INTO"){
+                list($next_before, $next_after)=explode("VALUES", $next_line, 2);
+                $next_before=str_replace("\"", "`", $next_before);
+            }
+            
+            if($before === $next_before){
+                $after_val = trim($after);
+                if(endsWith($after_val, ');')){
+                    if($in_same_insert_table_prefix === true){
+                        $output.=substr($after_val,0,strlen($after_val)-1).",";
+                    }else{
+                        $output.=$before."VALUES ".substr($after_val,0,strlen($after_val)-1).",";
+                        $in_same_insert_table_prefix = true;
+                    }
+                }else{
+                    $output.=$before."VALUES".$after;
+                }
+            }else{
+                if($in_same_insert_table_prefix === true){
+                    $output.=$after;
+                }else{
+                    $output.=$before."VALUES".$after;
+                }
+                $in_same_insert_table_prefix = false;
+            }
+            
+            while (isset($lines[$linenumber]) && (substr($lines[$linenumber], -3, -1)!=");" || $inquotes)) {
                 $linenumber++;
-                $line=$lines[$linenumber];
+                $line=isset($lines[$linenumber])?$lines[$linenumber]:"";
 
                 //in after, we need to watch out for escape format strings, ie (E'escaped \r in a string'), and ('bla',E'escaped \r in a string')
                 //ugh i guess its possible these strings could exist IN the data as well, but the only way to solve that is to process these lines one character
