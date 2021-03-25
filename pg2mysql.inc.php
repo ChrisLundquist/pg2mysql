@@ -75,6 +75,7 @@ function pg2mysql_large($infilename, $outfilename)
     $fs=filesize($infilename);
     $infp=fopen($infilename, "rt");
     $outfp=fopen($outfilename, "wt");
+    $infp_binary=fopen($infilename, "rb");
 
     //we read until we get a semicolon followed by a newline (;\n);
     $pgsqlchunk=array();
@@ -84,7 +85,13 @@ function pg2mysql_large($infilename, $outfilename)
     $first=true;
     $batchcount=0;
     $BATCH_CAPACITY=10000;
-    echo "Filesize: ".formatsize($fs)."\n";
+    $fileformat="";
+
+    $first_line=fgets($infp_binary);
+    $fileformat = (substr($first_line, -2) === "\r\n") ? "windows" : "unix";
+    fclose($infp_binary);
+
+    echo "Filesize: ".formatsize($fs).", Fileformat: ".$fileformat."\n";
 
     while ($instr=fgets($infp)) {
         $linenum++;
@@ -100,20 +107,20 @@ function pg2mysql_large($infilename, $outfilename)
                 $inquotes=true;
             }
         }
-
+        $currentpos=ftell($infp);
+        if($fileformat === "windows"){
+            $currentpos=$currentpos+$linenum;// windows OS \n\r line-end character ftell isn't equals filesize.
+        }
         if ($linenum%10000 == 0) {
-            $currentpos=ftell($infp)+$linenum;
             $percent=round($currentpos/$fs*100);
             $position=formatsize($currentpos);
             printf("Reading    progress: %3d%%   position: %7s   line: %9d   sql chunk: %9d  mem usage: %4dM\r", $percent, $position, $linenum, $chunkcount, $memusage);
-        }
-
-        $currentpos=ftell($infp)+$linenum;// windows OS \n\r line-end character ftell isn't equals filesize.
+        } 
         $progress=$currentpos/$fs;
         if(startsWith($instr, "INSERT INTO") || startsWith($instr, "CREATE TABLE")){
             $batchcount++;
         }
-        // print_r("currentpos:$currentpos".",fs:$fs,"."progress:".$progress);
+        // printf("currentpos: %7s, fs: %7s, progress: %7s \n\n", $currentpos, $fs, $progress);
 
         if ($progress == 1.0 || (strlen($instr)>3 && ($instr[$len-3]==")" && $instr[$len-2]==";" && $instr[$len-1]=="\n") && $inquotes==false && $batchcount>0 && $batchcount%$BATCH_CAPACITY==0)) {
             $chunkcount++;
