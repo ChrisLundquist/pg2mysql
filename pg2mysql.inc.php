@@ -91,7 +91,7 @@ function pg2mysql_large($infilename, $outfilename)
     $fileformat = (substr($first_line, -2) === "\r\n") ? "windows" : "unix";
     fclose($infp_binary);
 
-    echo "Filesize: ".formatsize($fs).", Fileformat: ".$fileformat."\n";
+    echo "Filesize: ".formatsize($fs)."(".$fs."), Fileformat: ".$fileformat."\n";
 
     while ($instr=fgets($infp)) {
         $linenum++;
@@ -145,6 +145,29 @@ function pg2mysql_large($infilename, $outfilename)
             $batchcount=0;
         }
     }
+
+    // when sql files include \r ,the last ftell not equals filesize and $progress=($currentpos/$fs) != 1.
+    if(!empty($pgsqlchunk)){
+        $chunkcount++;
+        $percent=round(1*100);
+        $position=formatsize($currentpos);
+        printf("Last processing(ftell not equals filesize) progress: %3d%%   position: %7s   line: %9d   sql chunk: %9d  mem usage: %4dM\n", $percent, $position, $linenum, $chunkcount, $memusage);
+        /*
+                    echo "sending chunk:\n";
+                    echo "=======================\n";
+                    print_r($pgsqlchunk);
+                    echo "=======================\n";
+        */
+
+        $mysqlchunk=pg2mysql($pgsqlchunk, $first);
+        fputs($outfp, $mysqlchunk);
+
+        $first=false;
+        $pgsqlchunk=array();
+        $mysqlchunk="";
+        $batchcount=0;
+    }
+
     echo "\n\n";
     printf("Completed! %9d lines   %9d sql chunks\n\n", $linenum, $chunkcount);
 
@@ -408,12 +431,13 @@ function pg2mysql($input, $header=true)
             }
             $next_line = isset($lines[$linenumber+1])?$lines[$linenumber+1]:"";
             $next_before="";
-            if (substr($next_line, 0, 11)=="INSERT INTO"){
+            if ($pos_x === false && substr($next_line, 0, 11)=="INSERT INTO"){
                 list($next_before, $next_after)=explode("VALUES", $next_line, 2);
                 $next_before=str_replace("\"", "`", $next_before);
             }
-            
-            if($before === $next_before){
+
+            // insert include bytea content don't merge, maby sql script content is too long(max_allowed_packet). 
+            if($pos_x === false && $before === $next_before){ 
                 $after_val = trim($after);
                 if(endsWith($after_val, ');')){
                     if($in_same_insert_table_prefix === true){
