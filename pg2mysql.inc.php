@@ -29,7 +29,9 @@ define('COPYRIGHT', "Lightbox Technologies Inc. http://www.lightbox.ca");
 
 //this is the default, it can be overridden here, or specified as the third parameter on the command line
 $config['engine']="InnoDB";
-$config['autoincrement_key_type'] = getenv("PG2MYSQL_AUTOINCREMENT_KEY_TYPE") ? getenv("PG2MYSQL_AUTOINCREMENT_KEY_TYPE") : "PRIMARY KEY";
+//$config['autoincrement_key_type'] = getenv("PG2MYSQL_AUTOINCREMENT_KEY_TYPE") ? getenv("PG2MYSQL_AUTOINCREMENT_KEY_TYPE") : "PRIMARY KEY";
+// avoid confict with fllow "alter table" add private key，autoincrement_key_type default：UNIQUE KEY
+$config['autoincrement_key_type'] = getenv("PG2MYSQL_AUTOINCREMENT_KEY_TYPE") ? getenv("PG2MYSQL_AUTOINCREMENT_KEY_TYPE") : "UNIQUE KEY";
 
 // Timezone to use
 date_default_timezone_set('UTC');
@@ -73,6 +75,7 @@ function pg2mysql_large($infilename, $outfilename)
     $fs=filesize($infilename);
     $infp=fopen($infilename, "rt");
     $outfp=fopen($outfilename, "wt");
+    $infp_binary=fopen($infilename, "rb");
 
     //we read until we get a semicolon followed by a newline (;\n);
     $pgsqlchunk=array();
@@ -80,7 +83,15 @@ function pg2mysql_large($infilename, $outfilename)
     $linenum=0;
     $inquotes=false;
     $first=true;
-    echo "Filesize: ".formatsize($fs)."\n";
+    $batchcount=0;
+    $BATCH_CAPACITY=10000;
+    $fileformat="";
+
+    $first_line=fgets($infp_binary);
+    $fileformat = (substr($first_line, -2) === "\r\n") ? "windows" : "unix";
+    fclose($infp_binary);
+
+    echo "Filesize: ".formatsize($fs)."(".$fs."), Fileformat: ".$fileformat."\n";
 
     while ($instr=fgets($infp)) {
         $linenum++;
@@ -96,18 +107,22 @@ function pg2mysql_large($infilename, $outfilename)
                 $inquotes=true;
             }
         }
-
+        $currentpos=ftell($infp);
+        if($fileformat === "windows"){
+            $currentpos=$currentpos+$linenum;// windows OS \n\r line-end character ftell isn't equals filesize.
+        }
         if ($linenum%10000 == 0) {
-            $currentpos=ftell($infp);
             $percent=round($currentpos/$fs*100);
             $position=formatsize($currentpos);
             printf("Reading    progress: %3d%%   position: %7s   line: %9d   sql chunk: %9d  mem usage: %4dM\r", $percent, $position, $linenum, $chunkcount, $memusage);
-        }
-
-        $currentpos=ftell($infp);
+        } 
         $progress=$currentpos/$fs;
+        if(startsWith($instr, "INSERT INTO") || startsWith($instr, "CREATE TABLE")){
+            $batchcount++;
+        }
+        // printf("currentpos: %7s, fs: %7s, progress: %7s \n\n", $currentpos, $fs, $progress);
 
-        if ($progress == 1.0 || (strlen($instr)>3 && ($instr[$len-3]==")" && $instr[$len-2]==";" && $instr[$len-1]=="\n") && $inquotes==false)) {
+        if ($progress == 1.0 || (strlen($instr)>3 && ($instr[$len-3]==")" && $instr[$len-2]==";" && $instr[$len-1]=="\n") && $inquotes==false && $batchcount>0 && $batchcount%$BATCH_CAPACITY==0)) {
             $chunkcount++;
             if ($linenum%10000==0) {
                 $percent=round($progress*100);
@@ -127,8 +142,32 @@ function pg2mysql_large($infilename, $outfilename)
             $first=false;
             $pgsqlchunk=array();
             $mysqlchunk="";
+            $batchcount=0;
         }
     }
+
+    // when sql files include \r ,the last ftell not equals filesize and $progress=($currentpos/$fs) != 1.
+    if(!empty($pgsqlchunk)){
+        $chunkcount++;
+        $percent=round(1*100);
+        $position=formatsize($currentpos);
+        printf("Last processing(ftell not equals filesize) progress: %3d%%   position: %7s   line: %9d   sql chunk: %9d  mem usage: %4dM\n", $percent, $position, $linenum, $chunkcount, $memusage);
+        /*
+                    echo "sending chunk:\n";
+                    echo "=======================\n";
+                    print_r($pgsqlchunk);
+                    echo "=======================\n";
+        */
+
+        $mysqlchunk=pg2mysql($pgsqlchunk, $first);
+        fputs($outfp, $mysqlchunk);
+
+        $first=false;
+        $pgsqlchunk=array();
+        $mysqlchunk="";
+        $batchcount=0;
+    }
+
     echo "\n\n";
     printf("Completed! %9d lines   %9d sql chunks\n\n", $linenum, $chunkcount);
 
@@ -136,26 +175,43 @@ function pg2mysql_large($infilename, $outfilename)
     fclose($outfp);
 }
 
+function startsWith( $haystack, $needle ) {
+    $length = strlen( $needle );
+    return substr( $haystack, 0, $length ) === $needle;
+}
+
+function endsWith( $haystack, $needle ) {
+   $length = strlen( $needle );
+   if( !$length ) {
+       return true;
+   }
+   return substr( $haystack, -$length ) === $needle;
+}
+
 function pg2mysql($input, $header=true)
 {
     global $config;
+    global $columnInfos;
+
+    $columnInfos = new \Ds\Map();
 
     if (is_array($input)) {
         $lines=$input;
     } else {
-        $lines=split("\n", $input);
+        $lines=explode("\n", $input);
     }
 
     if ($header) {
         $output = "# Converted with ".PRODUCT."-".VERSION."\n";
         $output.= "# Converted on ".date("r")."\n";
         $output.= "# ".COPYRIGHT."\n\n";
-        $output.="SET SQL_MODE=\"NO_AUTO_VALUE_ON_ZERO\";\nSET time_zone=\"+00:00\";\n\n";
+        $output.="SET SQL_MODE=\"NO_AUTO_VALUE_ON_ZERO\";\nSET time_zone=\"SYSTEM\";\n\n";
     } else {
         $output="";
     }
 
-    $in_create_table = $in_insert = false;
+    $in_create_table = $in_insert = $exclude_content = $in_same_insert_table_prefix = false;
+    $pre_insert_prefix="";
 
     $linenumber=0;
     $tbl_extra="";
@@ -164,8 +220,10 @@ function pg2mysql($input, $header=true)
         if (substr($line, 0, 12)=="CREATE TABLE") {
             $in_create_table=true;
             $line=str_replace("\"", "`", $line);
-            $output.=$line;
             $linenumber++;
+            $tableName=trim(str_replace("`", "", str_replace("(", "", substr($line, 12))));
+            // echo ($tableName."\n\n");
+            $output.=$line;
             continue;
         }
 
@@ -188,11 +246,32 @@ function pg2mysql($input, $header=true)
             $line=str_replace(" smallint_unsigned", " smallint UNSIGNED", $line);
             $line=str_replace(" bigint_unsigned", " bigint UNSIGNED", $line);
             $line=str_replace(" serial ", " int(11) auto_increment ", $line);
-            $line=str_replace(" bytea", " BLOB", $line);
+            $line=str_replace(" bytea", " longblob", $line);
             $line=str_replace(" boolean", " bool", $line);
             $line=str_replace(" bool DEFAULT true", " bool DEFAULT 1", $line);
             $line=str_replace(" bool DEFAULT false", " bool DEFAULT 0", $line);
-            $line=str_replace("` `text`", "` text", $line); // fix because pg_dump quotes text type for some reason
+
+            $line=str_replace(" wordcc", " longtext", $line); 
+            $line=str_replace(" oid", " longblob", $line); 
+            $line=str_replace(" text", " longtext", $line);
+
+            $line=str_replace(" `integer`", " int(11)", $line);
+            $line=str_replace(" `int_unsigned`", " int(11) UNSIGNED", $line);
+            $line=str_replace(" `smallint_unsigned`", " smallint UNSIGNED", $line);
+            $line=str_replace(" `bigint_unsigned`", " bigint UNSIGNED", $line);
+            $line=str_replace(" `serial`", " int(11) auto_increment ", $line);
+            $line=str_replace(" `bytea`", " longblob", $line);
+            $line=str_replace(" `boolean`", " bool", $line);
+            $line=str_replace(" `bool` DEFAULT true", " bool DEFAULT 1", $line);
+            $line=str_replace(" `bool` DEFAULT false", " bool DEFAULT 0", $line);
+
+            $line=str_replace("` `text`", "` longtext", $line); // fix because pg_dump quotes text type for some reason
+            $line=str_replace("`wordcc`", "longtext", $line); 
+            $line=str_replace("`oid`", "longblob", $line);  
+            $line=str_replace("`date`", "date", $line); 
+			$line=str_replace("`text`", "longtext", $line);
+            
+            
             if (preg_match("/ character varying\(([0-9]*)\)/", $line, $regs)) {
                 $num=$regs[1];
                 if ($num<=255) {
@@ -204,7 +283,8 @@ function pg2mysql($input, $header=true)
             }
             //character varying with no size, we will default to varchar(255)
             if (preg_match("/ character varying/", $line)) {
-                $line=preg_replace("/ character varying/", " varchar(255)", $line);
+                // $line=preg_replace("/ character varying/", " varchar(255)", $line);
+                $line=preg_replace("/ character varying/", " longtext", $line);
             }
 
             if (preg_match("/DEFAULT \('([0-9]*)'::int/", $line, $regs) ||
@@ -219,6 +299,7 @@ function pg2mysql($input, $header=true)
                 $line=preg_replace("/ DEFAULT \(([0-9\-]*)\)/", " DEFAULT $num ", $line);
             }
             $line=preg_replace("/ DEFAULT nextval\(.*\) /", " auto_increment ", $line);
+            $line=preg_replace("/ DEFAULT `nextval`\(.*\) /", " auto_increment ", $line);
             $line=preg_replace("/::.*,/", ",", $line);
             $line=preg_replace("/::.*$/", "\n", $line);
             if (preg_match("/character\(([0-9]*)\)/", $line, $regs)) {
@@ -230,8 +311,14 @@ function pg2mysql($input, $header=true)
                 }
             }
             //timestamps
-            $line=str_replace(" timestamp with time zone", " timestamp", $line);
-            $line=str_replace(" timestamp without time zone", " timestamp", $line);
+            $line=str_replace(" timestamp with time zone", " datetime", $line);
+            $line=str_replace(" timestamp without time zone", " datetime", $line);
+
+            
+            $line=str_replace(" timestamp(6) with time zone", " datetime", $line);
+            $line=str_replace(" timestamp(6) without time zone", " datetime", $line);
+
+             
 
             // Strip unsupported timezone information in date fields
             $line=preg_replace("/ date DEFAULT '(.*)(\+|\-).*'/", ' date DEFAULT \'${1}\'', $line);
@@ -240,8 +327,8 @@ function pg2mysql($input, $header=true)
             $line=str_replace(" time with time zone", " time", $line);
             $line=str_replace(" time without time zone", " time", $line);
 
-            $line=str_replace(" timestamp DEFAULT now()", " timestamp DEFAULT CURRENT_TIMESTAMP", $line);
-            $line=preg_replace("/ timestamp( NOT NULL)?(,|$)/", ' timestamp DEFAULT 0${1}${2}', $line);
+            $line=str_replace(" timestamp DEFAULT now()", " datetime DEFAULT CURRENT_TIMESTAMP", $line);
+            $line=preg_replace("/ timestamp( NOT NULL)?(,|$)/", ' datetime DEFAULT 0${1}${2}', $line);
 
             // Remove defaults pointing to functions
             $line=preg_replace("/ DEFAULT .*\(\)/", "", $line);
@@ -257,10 +344,12 @@ function pg2mysql($input, $header=true)
             if (in_array($field, $specialfields)) {
                 $line=str_replace("$field ", "`$field` ", $line);
             }
-
+            
+            $line=str_replace("text DEFAULT NULL", "text", $line);
             //text/blob fields are not allowed to have a default, so if we find a text DEFAULT, change it to varchar(255) DEFAULT
-            if (strstr($line, "text DEFAULT")) {
+            if (strstr($line, "text DEFAULT") && !strstr($line, "text DEFAULT NULL")) {
                 $line=str_replace(" text DEFAULT ", " varchar(255) DEFAULT ", $line);
+                $line=str_replace(" longtext DEFAULT ", " varchar(500) DEFAULT ", $line);
             }
 
             //just skip a CONSTRAINT line
@@ -273,7 +362,17 @@ function pg2mysql($input, $header=true)
                     $output=substr($output, 0, -2)."\n";
                 }
             }
+            $line=str_replace(" DEFAULT NULL", " ", $line);
+            $line=str_replace(" timestamp DEFAULT 0", " timestamp", $line);
+            $line=str_replace(" time DEFAULT 0", " time", $line);
+            
 
+            // remove the last comma
+            $columnDefi=trim($line);
+            if (endsWith($columnDefi, ',')){
+                $columnDefi = substr($columnDefi,0,strlen($columnDefi)-1);
+            }
+            $columnInfos->put($tableName.".".$field, $columnDefi);
             $output.=$line;
         }
 
@@ -304,10 +403,64 @@ function pg2mysql($input, $header=true)
                 $inquotes=false;
             }
 
-            $output.=$before."VALUES".$after;
-            while (substr($lines[$linenumber], -3, -1)!=");" || $inquotes) {
+            //process bytea to longblob, For example bytea content cast '\xa234bc23' to UNHEX('a234bc23')
+            $pos_x = strpos($after, '\', \'\\x');
+            $s_a=3;
+            $s_b=6;
+            if($pos_x === false){
+                // bytea column value start of first
+                $pos_x = strpos($after,' (\'\\x');
+                if($pos_x !== false){
+                    $s_a=2;
+                    $s_b=5;
+                }
+            }
+            if ($pos_x !== false) {
+                $v1=substr($after, 0, $pos_x+$s_a);
+                $v2=substr($after, $pos_x+$s_b);
+                $pos_e = strpos($v2,'\', \'');
+                if($pos_e === false){
+                    // bytea column value end of last
+                    $pos_e = strpos($v2,'\');');
+                }
+                if ($pos_e !== false) {
+                    $clob_c = substr($v2, 0, $pos_e);
+                    $v3=substr($v2, $pos_e+1);
+                    $after=$v1.' UNHEX(\''.$clob_c.'\') '.$v3;
+                }
+            }
+            $next_line = isset($lines[$linenumber+1])?$lines[$linenumber+1]:"";
+            $next_before="";
+            if ($pos_x === false && substr($next_line, 0, 11)=="INSERT INTO"){
+                list($next_before, $next_after)=explode("VALUES", $next_line, 2);
+                $next_before=str_replace("\"", "`", $next_before);
+            }
+
+            // insert include bytea content don't merge, maby sql script content is too long(max_allowed_packet). 
+            if($pos_x === false && $before === $next_before){ 
+                $after_val = trim($after);
+                if(endsWith($after_val, ');')){
+                    if($in_same_insert_table_prefix === true){
+                        $output.=substr($after_val,0,strlen($after_val)-1).",";
+                    }else{
+                        $output.=$before."VALUES ".substr($after_val,0,strlen($after_val)-1).",";
+                        $in_same_insert_table_prefix = true;
+                    }
+                }else{
+                    $output.=$before."VALUES".$after;
+                }
+            }else{
+                if($in_same_insert_table_prefix === true){
+                    $output.=$after;
+                }else{
+                    $output.=$before."VALUES".$after;
+                }
+                $in_same_insert_table_prefix = false;
+            }
+            
+            while (isset($lines[$linenumber]) && (substr($lines[$linenumber], -3, -1)!=");" || $inquotes)) {
                 $linenumber++;
-                $line=$lines[$linenumber];
+                $line=isset($lines[$linenumber])?$lines[$linenumber]:"";
 
                 //in after, we need to watch out for escape format strings, ie (E'escaped \r in a string'), and ('bla',E'escaped \r in a string')
                 //ugh i guess its possible these strings could exist IN the data as well, but the only way to solve that is to process these lines one character
@@ -341,7 +494,7 @@ function pg2mysql($input, $header=true)
             if (isset($lines[$linenumber])) {
                 $line=$lines[$linenumber];
 
-                if (strstr($line, " PRIMARY KEY ") && substr($line, -3, -1)==");") {
+                if ((strstr($line, " PRIMARY KEY ") || strstr($line, " FOREIGN KEY ")) && substr($line, -3, -1)==");") {
                     //looks like we have a single line PRIMARY KEY definition, lets go ahead and add it
                     $output.=$pkey;
                     //MySQL and Postgres syntax are similar here, minus quoting differences
@@ -358,6 +511,35 @@ function pg2mysql($input, $header=true)
                 $tablename=$matches[2];
                 $columns=str_replace("\"", "`", $matches[3]);
                 $output.="ALTER TABLE `{$tablename}` ADD INDEX ( {$columns} ) ;\n";
+            }
+        }
+        // add comment
+        if (substr($line, 0, 17)=="COMMENT ON COLUMN") {
+            preg_match('/COMMENT ON COLUMN (.*) IS (.*);/', $line, $matches);
+            #print_r($matches);
+            if (isset($matches[1]) && isset($matches[2])) {
+                $tablecolumnname=trim(str_replace("\"", "`", $matches[1]));
+                #echo("cn:".$tablecolumnname);
+                $columnInfoKey=str_replace("`", "", $tablecolumnname);
+                $tablename=explode(".", $columnInfoKey)[0];
+                #echo("columnInfoKey:".$columnInfoKey);
+                $comment=$matches[2];
+                // use remove function,because columnInfoVal only use once, needn't use get function. 
+                $columnInfoVal=$columnInfos->remove($columnInfoKey, "NOTFOUND");
+                // echo($columnInfoVal);
+                if(isset($columnInfoVal) && $columnInfoVal!="NOTFOUND"){
+                    $output.="ALTER TABLE `{$tablename}` MODIFY COLUMN {$columnInfoVal} COMMENT {$comment} ;\n";
+                }
+            }
+        }
+
+        if (substr($line, 0, 16)=="COMMENT ON TABLE") {
+            preg_match('/COMMENT ON TABLE (.*) IS (.*);/', $line, $matches);
+            if (isset($matches[1]) && isset($matches[2])) {
+                $tablename=trim(str_replace("\"", "`", $matches[1]));
+                $tablename=str_replace("`", "", $tablename);
+                $comment=$matches[2];
+                $output.="ALTER TABLE `{$tablename}` COMMENT {$comment} ;\n";
             }
         }
 

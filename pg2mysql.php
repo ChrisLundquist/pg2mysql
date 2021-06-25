@@ -33,7 +33,7 @@ The <b>pg2mysql</b> converter is an online tool to convert/migrate existing Post
 <form method=post action="pg2mysql.php">
 
 <?php
- if ($_POST['postgresdata']) {
+ if (isset($_POST['postgresdata'])) {
      $output=pg2mysql(stripslashes($_POST['postgresdata']));
      echo "<h3>Here is your MySQL dump file</h3>";
      echo "<textarea rows=20 cols=80 name=mysqldata>$output</textarea>";
