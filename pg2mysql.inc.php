@@ -31,6 +31,8 @@ $config['engine']="MyISAM";
 $config['domains'] = array();
 $config['domainschema'] = null;
 $config['verbose'] = false;
+$config['sqlite'] = false;
+$config['no-header'] = false;
 
 
 function write_debug($message) {
@@ -48,17 +50,15 @@ function getfieldname($l)
 	{
 		if($regs[1])
 			return $regs[1];
-		else
-			return null;
 	}
 	//if its not in quotes, then it should (we hope!) be the first "word" on the line, up to the first space.
 	else if(preg_match("/([^\ ]*)/",trim($l),$regs))
 	{
 		if($regs[1])
 			return $regs[1];
-		else
-			return null;
 	}
+
+	return null;
 }
 
 function formatsize($s) {
@@ -74,7 +74,10 @@ function formatsize($s) {
 
 
 function pg2mysql_large($infilename,$outfilename) {
+    global $config;
+
 	$from_stdin = 0;
+	$fs = null;
 	if ($infilename == '-') {
 		$infilename = 'php://STDIN';
 		$from_stdin = 1;
@@ -92,7 +95,7 @@ function pg2mysql_large($infilename,$outfilename) {
 	$chunkcount=1;
 	$linenum=0;
 	$inquotes=false;
-	$first=true;
+	$first = !$config['no-header'];
 	if (!$from_stdin) {
 		fprintf(STDERR, "Filesize: ".formatsize($fs)."\n");
 	}
@@ -156,13 +159,13 @@ function pg2mysql(&$input, $header=true)
 	if(is_array($input)) {
 		$lines=$input;
 	} else {
-		$lines=split("\n",$input);
+		$lines = explode("\n", $input);
 	}
 
 	if($header) {
-		$output = "# Converted with ".PRODUCT."-".VERSION."\n";
-		$output.= "# Converted on ".date("r")."\n";
-		$output.= "# ".COPYRIGHT."\n\n";
+		$output = "-- Converted with ".PRODUCT."-".VERSION."\n";
+		$output.= "-- Converted on ".date("r")."\n";
+		$output.= "-- ".COPYRIGHT."\n\n";
 		$output.="SET SQL_MODE=\"NO_AUTO_VALUE_ON_ZERO\";\nSET time_zone=\"+00:00\";\n\n";
 	}
 	else
@@ -172,6 +175,9 @@ function pg2mysql(&$input, $header=true)
 
 	$linenumber=0;
 	$tbl_extra="";
+	$values = array();
+	$heads = null;
+
 	while(isset($lines[$linenumber])) {
 		$line=$lines[$linenumber];
 
@@ -190,7 +196,7 @@ function pg2mysql(&$input, $header=true)
 
 		if(substr($line,0,2)==");" && $in_create_table) {
 			$in_create_table=false;
-			$line=") ENGINE={$config['engine']};\n\n";
+			$line=")" . ($config['sqlite'] ? "" : " ENGINE={$config['engine']}") . ";\n\n";
 
 			$output.=$tbl_extra;
 			$output.=$line;
@@ -222,38 +228,38 @@ function pg2mysql(&$input, $header=true)
 			$line=str_replace(" boolean"," bool",$line);
 			$line=str_replace(" bool DEFAULT true"," bool DEFAULT 1",$line);
 			$line=str_replace(" bool DEFAULT false"," bool DEFAULT 0",$line);
-			if(preg_match("/ character varying\((\d*)\)/",$line,$regs)) {
+			if(preg_match("/ character varying\(([0-9]*)\)/",$line,$regs)) {
 				$num=$regs[1];
 				if($num<=255)
-					$line=preg_replace("/ character varying\(\d*\)/"," varchar($num)",$line);
+					$line=preg_replace("/ character varying\([0-9]*\)/"," varchar($num)",$line);
 				else
-					$line=preg_replace("/ character varying\(\d*\)/"," text",$line);
+					$line=preg_replace("/ character varying\([0-9]*\)/"," text",$line);
 			}
 			//character varying with no size, we will default to varchar(255)
 			if(preg_match("/ character varying/",$line)) {
 				$line=preg_replace("/ character varying/"," varchar(255)",$line);
 			}
 
-			if( 	preg_match("/DEFAULT \('(\d*)'::int/",$line,$regs) ||
-				preg_match("/DEFAULT \('(\d*)'::smallint/",$line,$regs) ||
-				preg_match("/DEFAULT \('(\d*)'::bigint/",$line,$regs)
+			if( 	preg_match("/DEFAULT \('([0-9]*)'::int/",$line,$regs) ||
+				preg_match("/DEFAULT \('([0-9]*)'::smallint/",$line,$regs) ||
+				preg_match("/DEFAULT \('([0-9]*)'::bigint/",$line,$regs)
 						) {
 				$num=$regs[1];
-				$line=preg_replace("/ DEFAULT \('(\d*)'[^ ,]*/"," DEFAULT $num ",$line);
+				$line=preg_replace("/ DEFAULT \('([0-9]*)'[^ ,]*/"," DEFAULT $num ",$line);
 			}
 			if(preg_match("/DEFAULT \(([0-9\-]*)\)/",$line,$regs)) {
 				$num=$regs[1];
-				$line=preg_replace("/ DEFAULT \(([\d\-]*)\)/"," DEFAULT $num ",$line);
+				$line=preg_replace("/ DEFAULT \(([0-9\-]*)\)/"," DEFAULT $num ",$line);
 			}
 			$line=preg_replace("/ DEFAULT nextval\(.*\) /"," auto_increment ",$line);
 			$line=preg_replace("/::.*,/",",",$line);
 			$line=preg_replace("/::.*$/","\n",$line);
-			if(preg_match("/character\((\d*)\)/",$line,$regs)) {
+			if(preg_match("/character\(([0-9]*)\)/",$line,$regs)) {
 				$num=$regs[1];
 				if($num<=255)
-					$line=preg_replace("/ character\(\d*\)/"," varchar($num)",$line);
+					$line=preg_replace("/ character\([0-9]*\)/"," varchar($num)",$line);
 				else
-					$line=preg_replace("/ character\(\d*\)/"," text",$line);
+					$line=preg_replace("/ character\([0-9]*\)/"," text",$line);
 			}
 			//timestamps
 			$line=str_replace(" timestamp with time zone"," timestamp",$line);
