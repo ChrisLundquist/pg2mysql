@@ -44,7 +44,7 @@ function write_debug($message) {
 function getfieldname($l)
 {
 	//first check if its in nice quotes for us
-	if(ereg("`(.*)`",$l,$regs))
+	if(preg_match("/`(.*)`/",$l,$regs))
 	{
 		if($regs[1])
 			return $regs[1];
@@ -52,7 +52,7 @@ function getfieldname($l)
 			return null;
 	}
 	//if its not in quotes, then it should (we hope!) be the first "word" on the line, up to the first space.
-	else if(ereg("([^\ ]*)",trim($l),$regs))
+	else if(preg_match("/([^\ ]*)/",trim($l),$regs))
 	{
 		if($regs[1])
 			return $regs[1];
@@ -174,7 +174,7 @@ function pg2mysql(&$input, $header=true)
 	$tbl_extra="";
 	while(isset($lines[$linenumber])) {
 		$line=$lines[$linenumber];
-		
+
 		if (!$config['domainschema'] && preg_match('/SET\s+search_path\s*=\s*([^,\s]+)/', $line, $matches)) {
 			$config['domainschema'] = $matches[1];
 			write_debug("Schema: " . $config['domainschema']);
@@ -208,7 +208,7 @@ function pg2mysql(&$input, $header=true)
 				if ($config['domainschema']) {
 					$line = preg_replace('/\b' . $config['domainschema'] . '.' . $dom . '\b/', $def, $line);
 				}
-				
+
 				$line = preg_replace('/\b' . $dom . '\b/', $def, $line);
 			}
 
@@ -222,38 +222,38 @@ function pg2mysql(&$input, $header=true)
 			$line=str_replace(" boolean"," bool",$line);
 			$line=str_replace(" bool DEFAULT true"," bool DEFAULT 1",$line);
 			$line=str_replace(" bool DEFAULT false"," bool DEFAULT 0",$line);
-			if(ereg(" character varying\(([0-9]*)\)",$line,$regs)) {
+			if(preg_match("/ character varying\((\d*)\)/",$line,$regs)) {
 				$num=$regs[1];
 				if($num<=255)
-					$line=ereg_replace(" character varying\([0-9]*\)"," varchar($num)",$line);
+					$line=preg_replace("/ character varying\(\d*\)/"," varchar($num)",$line);
 				else
-					$line=ereg_replace(" character varying\([0-9]*\)"," text",$line);
+					$line=preg_replace("/ character varying\(\d*\)/"," text",$line);
 			}
 			//character varying with no size, we will default to varchar(255)
-			if(ereg(" character varying",$line)) {
-				$line=ereg_replace(" character varying"," varchar(255)",$line);
+			if(preg_match("/ character varying/",$line)) {
+				$line=preg_replace("/ character varying/"," varchar(255)",$line);
 			}
 
-			if( 	ereg("DEFAULT \('([0-9]*)'::int",$line,$regs) ||
-				ereg("DEFAULT \('([0-9]*)'::smallint",$line,$regs) ||
-				ereg("DEFAULT \('([0-9]*)'::bigint",$line,$regs)
+			if( 	preg_match("/DEFAULT \('(\d*)'::int/",$line,$regs) ||
+				preg_match("/DEFAULT \('(\d*)'::smallint/",$line,$regs) ||
+				preg_match("/DEFAULT \('(\d*)'::bigint/",$line,$regs)
 						) {
 				$num=$regs[1];
-				$line=ereg_replace(" DEFAULT \('([0-9]*)'[^ ,]*"," DEFAULT $num ",$line);
+				$line=preg_replace("/ DEFAULT \('(\d*)'[^ ,]*/"," DEFAULT $num ",$line);
 			}
-			if(ereg("DEFAULT \(([0-9\-]*)\)",$line,$regs)) {
+			if(preg_match("/DEFAULT \(([0-9\-]*)\)/",$line,$regs)) {
 				$num=$regs[1];
-				$line=ereg_replace(" DEFAULT \(([0-9\-]*)\)"," DEFAULT $num ",$line);
+				$line=preg_replace("/ DEFAULT \(([\d\-]*)\)/"," DEFAULT $num ",$line);
 			}
-			$line=ereg_replace(" DEFAULT nextval\(.*\) "," auto_increment ",$line);
-			$line=ereg_replace("::.*,",",",$line);
-			$line=ereg_replace("::.*$","\n",$line);
-			if(ereg("character\(([0-9]*)\)",$line,$regs)) {
+			$line=preg_replace("/ DEFAULT nextval\(.*\) /"," auto_increment ",$line);
+			$line=preg_replace("/::.*,/",",",$line);
+			$line=preg_replace("/::.*$/","\n",$line);
+			if(preg_match("/character\((\d*)\)/",$line,$regs)) {
 				$num=$regs[1];
 				if($num<=255)
-					$line=ereg_replace(" character\([0-9]*\)"," varchar($num)",$line);
+					$line=preg_replace("/ character\(\d*\)/"," varchar($num)",$line);
 				else
-					$line=ereg_replace(" character\([0-9]*\)"," text",$line);
+					$line=preg_replace("/ character\(\d*\)/"," text",$line);
 			}
 			//timestamps
 			$line=str_replace(" timestamp with time zone"," timestamp",$line);
@@ -403,7 +403,7 @@ function pg2mysql(&$input, $header=true)
 			preg_match('/CREATE DATABASE ([a-zA-Z0-9_]*) .* ENCODING = \'(.*)\'/', $line, $matches);
 			$output .= "CREATE DATABASE `$matches[1]` DEFAULT CHARACTER SET $matches[2];\n\n";
 		}
-		
+
 		if (preg_match('/^\s*CREATE DOMAIN/', $line)) {
 			$def = $line;
 			while (!preg_match('/;\s*$/', $line) && isset($lines[$linenumber+1])) {
@@ -411,7 +411,7 @@ function pg2mysql(&$input, $header=true)
 				$line = $lines[$linenumber];
 				$def .= $line;
 			}
-			
+
 			if (preg_match('/CREATE DOMAIN\s+([a-zA-Z0-9_\.]+)\s+AS\s+(.+?)(\s*;|\s+CONSTRAINT)/', $def, $matches)) {
 				$config['domains'][$matches[1]] = str_replace('NOT NULL', '', $matches[2]);
 			}
@@ -465,18 +465,18 @@ function read_domains($input)
 
 	while(count($lines)) {
 		$line = array_shift($lines);
-		
+
 		if (preg_match('/SET\s+search_path\s*=\s*([^,\s]+)/', $line, $matches)) {
 			$config['domainschema'] = $matches[1];
 			write_debug("Schema: " . $config['domainschema']);
 		}
-		
+
 		if (preg_match('/^\s*CREATE DOMAIN/', $line)) {
 			$def = $line;
 			while (!preg_match('/;\s*$/', $def) && count($lines)) {
 				$def .= array_shift($lines);
 			}
-			
+
 			if (preg_match('/CREATE DOMAIN\s+([a-zA-Z0-9_\.]+)\s+AS\s+(.+?)(\s*;|\s+CONSTRAINT)/', $def, $matches)) {
 				// take NOT NULL out of domain def since it also appears on the column definition
 				$config['domains'][$matches[1]] = str_replace('NOT NULL', '', $matches[2]);
